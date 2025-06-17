@@ -67,7 +67,7 @@ struct SettingsView: View {
                                 Text("Prompts")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("\(openAIService.promptHistory.count) interactions")
+                                Text("\(openAIService.totalPromptCount) interactions")
                                     .foregroundColor(.secondary)
                                     .font(.caption)
                             }
@@ -93,7 +93,7 @@ struct SettingsView: View {
                 } header: {
                     Text("API Usage")
                 } footer: {
-                    Text("Manage your API credits and view detailed history of interactions. Prompts are limited to 20 most recent interactions.")
+                    Text("Manage your API credits and view detailed history of interactions. History shows 20 most recent, but billing tracks all interactions.")
                         .font(.caption)
                 }
             }

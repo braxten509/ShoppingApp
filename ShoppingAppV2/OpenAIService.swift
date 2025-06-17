@@ -58,16 +58,26 @@ class OpenAIService: ObservableObject {
     private let billingURL = "https://api.openai.com/v1/dashboard/billing/credit_grants"
     
     @Published var promptHistory: [PromptHistoryItem] = []
+    @Published var totalSpentAllTime: Double = 0.0
     
     private let historyKey = "prompt_history"
     private let initialCreditsKey = "initial_api_credits"
     private let manualSpentKey = "manual_spent_credits"
+    private let totalSpentKey = "total_spent_all_time"
     
     init() {
         // Load initial values from UserDefaults
         self.initialCredits = UserDefaults.standard.object(forKey: initialCreditsKey) as? Double ?? 0.0
         self.manualSpentAdjustment = UserDefaults.standard.object(forKey: manualSpentKey) as? Double ?? 0.0
+        self.totalSpentAllTime = UserDefaults.standard.object(forKey: totalSpentKey) as? Double ?? 0.0
         loadPromptHistory()
+        
+        // One-time migration: if totalSpentAllTime is 0 but we have prompt history, migrate
+        if totalSpentAllTime == 0.0 && !promptHistory.isEmpty {
+            let historicalTotal = promptHistory.reduce(0) { $0 + $1.estimatedCost }
+            totalSpentAllTime = historicalTotal
+            UserDefaults.standard.set(totalSpentAllTime, forKey: totalSpentKey)
+        }
         
         // Validate API key is loaded
         if apiKey.isEmpty {
@@ -511,9 +521,13 @@ class OpenAIService: ObservableObject {
     
     private func addToHistory(_ item: PromptHistoryItem) {
         DispatchQueue.main.async {
+            // Add cost to total before adding to history
+            self.totalSpentAllTime += item.estimatedCost
+            UserDefaults.standard.set(self.totalSpentAllTime, forKey: self.totalSpentKey)
+            
             self.promptHistory.insert(item, at: 0) // Add to beginning for newest first
             
-            // Keep only last 20 items
+            // Keep only last 20 items for display
             if self.promptHistory.count > 20 {
                 self.promptHistory = Array(self.promptHistory.prefix(20))
             }
@@ -551,7 +565,7 @@ class OpenAIService: ObservableObject {
     }
     
     var totalSpent: Double {
-        return promptHistory.reduce(0) { $0 + $1.estimatedCost }
+        return totalSpentAllTime + manualSpentAdjustment
     }
     
     // Billing Management

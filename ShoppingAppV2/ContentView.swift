@@ -78,7 +78,13 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingVerifyItem) {
                 if let info = extractedInfo {
-                    VerifyItemView(extractedInfo: info, store: store, settingsStore: settingsStore, openAIService: openAIService)
+                    VerifyItemView(extractedInfo: info, store: store, settingsStore: settingsStore, openAIService: openAIService) {
+                        // Retake photo callback
+                        showingVerifyItem = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showingCamera = true
+                        }
+                    }
                 }
             }
             .sheet(isPresented: $showingSettings) {

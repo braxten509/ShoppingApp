@@ -21,6 +21,7 @@ struct VerifyItemView: View {
     @State private var taxRateString: String
     @State private var isAnalyzingAdditives = false
     @State private var isRetryingAnalysis = false
+    @State private var retryCounter = 0
     @State private var riskyAdditives = 0
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
@@ -113,16 +114,19 @@ struct VerifyItemView: View {
                             HStack {
                                 ProgressView()
                                     .scaleEffect(0.8)
+                                    .id("retry-progress-\(retryCounter)")
                                 Text("Retrying analysis...")
                                     .foregroundColor(.secondary)
                             }
+                            .id("retry-loading-\(retryCounter)")
                         } else {
                             Button("Retry Analysis") {
                                 print("🔘 Button tapped, isRetryingAnalysis before: \(isRetryingAnalysis)")
                                 Task { @MainActor in
                                     print("🔄 Setting isRetryingAnalysis to true")
+                                    retryCounter += 1
                                     isRetryingAnalysis = true
-                                    print("🔄 isRetryingAnalysis is now: \(isRetryingAnalysis)")
+                                    print("🔄 isRetryingAnalysis is now: \(isRetryingAnalysis), retryCounter: \(retryCounter)")
                                     // Small delay to ensure UI updates
                                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                                     print("🔄 Starting retry analysis")

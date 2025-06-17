@@ -116,10 +116,13 @@ struct VerifyItemView: View {
                             Button("Retry Analysis") {
                                 Task { @MainActor in
                                     isRetryingAnalysis = true
+                                    // Small delay to ensure UI updates
+                                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                                     await retryAnalysis(with: originalImage)
                                 }
                             }
                             .foregroundColor(.blue)
+                            .disabled(isRetryingAnalysis)
                         }
                     }
                     

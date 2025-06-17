@@ -114,8 +114,10 @@ struct VerifyItemView: View {
                             }
                         } else {
                             Button("Retry Analysis") {
-                                isRetryingAnalysis = true
-                                retryAnalysis(with: originalImage)
+                                Task { @MainActor in
+                                    isRetryingAnalysis = true
+                                    await retryAnalysis(with: originalImage)
+                                }
                             }
                             .foregroundColor(.blue)
                         }
@@ -235,23 +237,18 @@ struct VerifyItemView: View {
         }
     }
     
-    private func retryAnalysis(with image: UIImage) {
-        Task {
-            do {
-                let newInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)
-                
-                DispatchQueue.main.async {
-                    self.name = newInfo.name
-                    self.costString = String(format: "%.2f", newInfo.price)
-                    self.taxRateString = String(format: "%.2f", newInfo.taxRate ?? 0.0)
-                    self.isRetryingAnalysis = false
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isRetryingAnalysis = false
-                    print("Error retrying analysis: \(error)")
-                }
-            }
+    @MainActor
+    private func retryAnalysis(with image: UIImage) async {
+        do {
+            let newInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)
+            
+            self.name = newInfo.name
+            self.costString = String(format: "%.2f", newInfo.price)
+            self.taxRateString = String(format: "%.2f", newInfo.taxRate ?? 0.0)
+            self.isRetryingAnalysis = false
+        } catch {
+            self.isRetryingAnalysis = false
+            print("Error retrying analysis: \(error)")
         }
     }
 }

@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var selectedImage: UIImage?
     @State private var editingItem: ShoppingItem?
     @State private var extractedInfo: PriceTagInfo?
+    @State private var lastProcessedImage: UIImage?
     @State private var isProcessingImage = false
     @State private var showingClearConfirmation = false
     @State private var showingSettings = false
@@ -78,13 +79,24 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingVerifyItem) {
                 if let info = extractedInfo {
-                    VerifyItemView(extractedInfo: info, store: store, settingsStore: settingsStore, openAIService: openAIService) {
-                        // Retake photo callback
-                        showingVerifyItem = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            showingCamera = true
+                    VerifyItemView(
+                        extractedInfo: info, 
+                        store: store, 
+                        settingsStore: settingsStore, 
+                        openAIService: openAIService,
+                        onRetakePhoto: {
+                            // Retake photo callback
+                            showingVerifyItem = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                showingCamera = true
+                            }
+                        },
+                        originalImage: lastProcessedImage,
+                        onRetryAnalysis: { image in
+                            // Retry analysis with same image
+                            processImage(image)
                         }
-                    }
+                    )
                 }
             }
             .sheet(isPresented: $showingSettings) {
@@ -310,6 +322,7 @@ struct ContentView: View {
     
     private func processImage(_ image: UIImage) {
         isProcessingImage = true
+        lastProcessedImage = image
         
         let locationString: String? = {
             guard let placemark = locationManager.placemark else { return nil }

@@ -13,6 +13,8 @@ struct VerifyItemView: View {
     @ObservedObject var openAIService: OpenAIService
     @Environment(\.presentationMode) var presentationMode
     let onRetakePhoto: (() -> Void)?
+    let originalImage: UIImage?
+    let onRetryAnalysis: ((UIImage) -> Void)?
     
     @State private var name: String
     @State private var costString: String
@@ -22,12 +24,14 @@ struct VerifyItemView: View {
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
     
-    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil) {
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, onRetryAnalysis: ((UIImage) -> Void)? = nil) {
         self.extractedInfo = extractedInfo
         self.store = store
         self.settingsStore = settingsStore
         self.openAIService = openAIService
         self.onRetakePhoto = onRetakePhoto
+        self.originalImage = originalImage
+        self.onRetryAnalysis = onRetryAnalysis
         self._name = State(initialValue: extractedInfo.name)
         self._costString = State(initialValue: String(format: "%.2f", extractedInfo.price))
         self._taxRateString = State(initialValue: String(format: "%.2f", extractedInfo.taxRate ?? 0.0))
@@ -94,16 +98,18 @@ struct VerifyItemView: View {
                                     .foregroundColor(.secondary)
                                     .font(.caption)
                             }
-                            
-                            Button("Retry Analysis") {
-                                retryAnalysis()
-                            }
-                            .foregroundColor(.blue)
                         }
                     }
                 }
                 
                 Section(header: Text("Actions")) {
+                    if let originalImage = originalImage, let onRetryAnalysis = onRetryAnalysis {
+                        Button("Retry Analysis") {
+                            onRetryAnalysis(originalImage)
+                        }
+                        .foregroundColor(.blue)
+                    }
+                    
                     if let onRetakePhoto = onRetakePhoto {
                         Button("Retry & Take New Photo") {
                             onRetakePhoto()
@@ -218,13 +224,4 @@ struct VerifyItemView: View {
         }
     }
     
-    private func retryAnalysis() {
-        // Reset current state
-        riskyAdditives = 0
-        nonRiskyAdditives = 0
-        additiveDetails = []
-        
-        // Re-run the analysis
-        analyzeAdditives()
-    }
 }

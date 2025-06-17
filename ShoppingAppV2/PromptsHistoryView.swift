@@ -86,6 +86,21 @@ struct PromptsHistoryView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                     .onDelete(perform: deletePromptHistoryItems)
+                    
+                    // Show indicator for hidden prompts
+                    if openAIService.totalPromptCount > openAIService.promptHistory.count {
+                        let hiddenCount = openAIService.totalPromptCount - openAIService.promptHistory.count
+                        Section {
+                            HStack {
+                                Spacer()
+                                Text("+\(hiddenCount) Others")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
                 }
             }
             .navigationTitle("Prompt History (\(openAIService.totalPromptCount))")

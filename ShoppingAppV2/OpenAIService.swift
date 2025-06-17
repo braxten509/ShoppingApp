@@ -64,10 +64,16 @@ class OpenAIService: ObservableObject {
     @Published var totalTaxLookupCount: Int = 0
     @Published var totalImageAnalysisCost: Double = 0.0
     @Published var totalTaxLookupCost: Double = 0.0
+    @Published var spentBaseline: Double = 0.0
+    @Published var baselineSetDate: Date?
+    @Published var spentSinceBaselineAmount: Double = 0.0
     
     private let historyKey = "prompt_history"
     private let initialCreditsKey = "initial_api_credits"
-    private let manualSpentKey = "manual_spent_credits"
+    private let manualSpentKey = "manual_spent_credits" // Legacy key
+    private let spentBaselineKey = "spent_baseline"
+    private let baselineSetDateKey = "baseline_set_date"
+    private let spentSinceBaselineKey = "spent_since_baseline"
     private let totalSpentKey = "total_spent_all_time"
     private let totalCountKey = "total_prompt_count"
     private let totalImageAnalysisCountKey = "total_image_analysis_count"
@@ -79,6 +85,11 @@ class OpenAIService: ObservableObject {
         // Load initial values from UserDefaults
         self.initialCredits = UserDefaults.standard.object(forKey: initialCreditsKey) as? Double ?? 0.0
         self.manualSpentAdjustment = UserDefaults.standard.object(forKey: manualSpentKey) as? Double ?? 0.0
+        self.spentBaseline = UserDefaults.standard.object(forKey: spentBaselineKey) as? Double ?? 0.0
+        if let dateData = UserDefaults.standard.object(forKey: baselineSetDateKey) as? Data {
+            self.baselineSetDate = try? JSONDecoder().decode(Date.self, from: dateData)
+        }
+        self.spentSinceBaselineAmount = UserDefaults.standard.object(forKey: spentSinceBaselineKey) as? Double ?? 0.0
         self.totalSpentAllTime = UserDefaults.standard.object(forKey: totalSpentKey) as? Double ?? 0.0
         self.totalPromptCount = UserDefaults.standard.object(forKey: totalCountKey) as? Int ?? 0
         self.totalImageAnalysisCount = UserDefaults.standard.object(forKey: totalImageAnalysisCountKey) as? Int ?? 0
@@ -221,6 +232,10 @@ class OpenAIService: ObservableObject {
     }
     
     func analyzePriceTag(image: UIImage, location: String? = nil) async throws -> PriceTagInfo {
+        guard !apiKey.isEmpty else {
+            throw NSError(domain: "OpenAIError", code: -1, userInfo: [NSLocalizedDescriptionKey: "OpenAI API key not configured. Please set OPENAI_API_KEY in your Xcode scheme environment variables."])
+        }
+        
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
             throw NSError(domain: "ImageError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to data"])
         }
@@ -618,7 +633,7 @@ class OpenAIService: ObservableObject {
     }
     
     var totalSpent: Double {
-        return totalSpentAllTime + manualSpentAdjustment
+        return manualSpentAdjustment + totalSpentAllTime
     }
     
     // Billing Management
@@ -634,17 +649,60 @@ class OpenAIService: ObservableObject {
         }
     }
     
-    var actualTotalSpent: Double {
-        return totalSpent + manualSpentAdjustment
-    }
-    
     var remainingCredits: Double {
-        return max(0, initialCredits - actualTotalSpent)
+        return max(0, initialCredits - totalSpent)
     }
     
     var creditsUsedPercentage: Double {
         guard initialCredits > 0 else { return 0 }
-        return min(1.0, actualTotalSpent / initialCredits)
+        return min(1.0, totalSpent / initialCredits)
+    }
+    
+    func setSpentBaseline(_ amount: Double) {
+        spentBaseline = amount
+        baselineSetDate = Date()
+        spentSinceBaselineAmount = 0.0
+        
+        UserDefaults.standard.set(spentBaseline, forKey: spentBaselineKey)
+        if let dateData = try? JSONEncoder().encode(baselineSetDate) {
+            UserDefaults.standard.set(dateData, forKey: baselineSetDateKey)
+        }
+        UserDefaults.standard.set(spentSinceBaselineAmount, forKey: spentSinceBaselineKey)
+    }
+    
+    func resetBilling() {
+        // Clear all tracking
+        totalSpentAllTime = 0.0
+        totalPromptCount = 0
+        totalImageAnalysisCount = 0
+        totalTaxLookupCount = 0
+        totalImageAnalysisCost = 0.0
+        totalTaxLookupCost = 0.0
+        spentBaseline = 0.0
+        baselineSetDate = nil
+        spentSinceBaselineAmount = 0.0
+        manualSpentAdjustment = 0.0
+        
+        // Clear prompt history
+        promptHistory.removeAll()
+        
+        // Clear UserDefaults
+        UserDefaults.standard.removeObject(forKey: totalSpentKey)
+        UserDefaults.standard.removeObject(forKey: totalCountKey)
+        UserDefaults.standard.removeObject(forKey: totalImageAnalysisCountKey)
+        UserDefaults.standard.removeObject(forKey: totalTaxLookupCountKey)
+        UserDefaults.standard.removeObject(forKey: totalImageAnalysisCostKey)
+        UserDefaults.standard.removeObject(forKey: totalTaxLookupCostKey)
+        UserDefaults.standard.removeObject(forKey: spentBaselineKey)
+        UserDefaults.standard.removeObject(forKey: baselineSetDateKey)
+        UserDefaults.standard.removeObject(forKey: spentSinceBaselineKey)
+        UserDefaults.standard.removeObject(forKey: historyKey)
+        UserDefaults.standard.removeObject(forKey: manualSpentKey)
+    }
+    
+    func setTotalSpent(_ amount: Double) {
+        // Calculate what the manual adjustment should be to reach the desired total
+        manualSpentAdjustment = amount - totalSpentAllTime
     }
     
     func setInitialCredits(_ amount: Double) {
@@ -653,20 +711,6 @@ class OpenAIService: ObservableObject {
         }
     }
     
-    func setTotalSpent(_ amount: Double) {
-        DispatchQueue.main.async {
-            // Calculate what the manual adjustment should be
-            self.manualSpentAdjustment = amount - self.totalSpent
-        }
-    }
-    
-    func resetBilling() {
-        DispatchQueue.main.async {
-            self.clearPromptHistory()
-            self.manualSpentAdjustment = 0.0
-            // Note: This will reset totalSpent to 0 since it's calculated from promptHistory
-        }
-    }
     
     // Usage Estimates
     var averageImageAnalysisCost: Double {

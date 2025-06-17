@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var showingAdditiveDetail = false
     @State private var selectedItemForAdditives: ShoppingItem?
+    @State private var showingError = false
+    @State private var errorMessage = ""
     
     var body: some View {
         NavigationView {
@@ -68,6 +70,11 @@ struct ContentView: View {
                 }
             } message: {
                 Text("Are you sure you want to remove all \(store.items.count) item\(store.items.count == 1 ? "" : "s") from your shopping list? This action cannot be undone.")
+            }
+            .alert("Processing Error", isPresented: $showingError) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage)
             }
             .sheet(isPresented: $showingCamera) {
                 CameraView(selectedImage: $selectedImage)
@@ -356,7 +363,8 @@ struct ContentView: View {
                 DispatchQueue.main.async {
                     self.isProcessingImage = false
                     self.selectedImage = nil
-                    // In a real app, you'd show an error alert here
+                    self.errorMessage = "Failed to process image: \(error.localizedDescription)"
+                    self.showingError = true
                     print("Error processing image: \(error)")
                 }
             }

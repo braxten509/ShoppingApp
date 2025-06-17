@@ -31,7 +31,7 @@ struct BillingView: View {
                             }
                             
                             HStack(spacing: 3) {
-                                Text("$\(openAIService.actualTotalSpent, specifier: "%.6f")")
+                                Text("$\(openAIService.totalSpent, specifier: "%.6f")")
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.red)
@@ -203,7 +203,7 @@ struct BillingView: View {
                                 Text("Total Spent")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                Text("$\(openAIService.actualTotalSpent, specifier: "%.6f")")
+                                Text("$\(openAIService.totalSpent, specifier: "%.6f")")
                                     .font(.title3)
                                     .fontWeight(.bold)
                                     .foregroundColor(.red)
@@ -228,22 +228,21 @@ struct BillingView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                Text("$\(openAIService.totalSpent, specifier: "%.6f")")
+                                Text("$\(openAIService.totalSpentAllTime, specifier: "%.6f")")
                                     .font(.caption)
                                     .fontWeight(.medium)
                             }
                             
-                            let manualAdjustment = openAIService.actualTotalSpent - openAIService.totalSpent
-                            if manualAdjustment != 0 {
+                            if openAIService.manualSpentAdjustment != 0 {
                                 HStack {
                                     Text("• Manual adjustment:")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    Text("\(manualAdjustment >= 0 ? "+" : "")$\(manualAdjustment, specifier: "%.6f")")
+                                    Text("$\(openAIService.manualSpentAdjustment, specifier: "%.6f")")
                                         .font(.caption)
                                         .fontWeight(.medium)
-                                        .foregroundColor(manualAdjustment >= 0 ? .orange : .green)
+                                        .foregroundColor(openAIService.manualSpentAdjustment >= 0 ? .blue : .green)
                                 }
                             }
                         }
@@ -371,7 +370,7 @@ struct BillingView: View {
                             showingEditCredits = true
                         },
                         .default(Text("Edit Total Spent")) {
-                            newSpentString = String(format: "%.6f", openAIService.actualTotalSpent)
+                            newSpentString = String(format: "%.6f", openAIService.totalSpent)
                             showingEditSpent = true
                         },
                         .cancel()

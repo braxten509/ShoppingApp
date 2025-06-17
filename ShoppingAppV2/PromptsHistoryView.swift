@@ -88,7 +88,7 @@ struct PromptsHistoryView: View {
                     .onDelete(perform: deletePromptHistoryItems)
                 }
             }
-            .navigationTitle("Prompt History")
+            .navigationTitle("Prompt History (\(openAIService.totalPromptCount))")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -115,7 +115,7 @@ struct PromptsHistoryView: View {
                     openAIService.clearPromptHistory()
                 }
             } message: {
-                Text("Are you sure you want to clear all \(openAIService.promptHistory.count) prompt interactions? This action cannot be undone.")
+                Text("Are you sure you want to clear the \(openAIService.promptHistory.count) visible prompt interactions? This will not affect your billing totals.")
             }
         }
     }

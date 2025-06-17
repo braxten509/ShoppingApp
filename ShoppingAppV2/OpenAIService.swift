@@ -59,17 +59,20 @@ class OpenAIService: ObservableObject {
     
     @Published var promptHistory: [PromptHistoryItem] = []
     @Published var totalSpentAllTime: Double = 0.0
+    @Published var totalPromptCount: Int = 0
     
     private let historyKey = "prompt_history"
     private let initialCreditsKey = "initial_api_credits"
     private let manualSpentKey = "manual_spent_credits"
     private let totalSpentKey = "total_spent_all_time"
+    private let totalCountKey = "total_prompt_count"
     
     init() {
         // Load initial values from UserDefaults
         self.initialCredits = UserDefaults.standard.object(forKey: initialCreditsKey) as? Double ?? 0.0
         self.manualSpentAdjustment = UserDefaults.standard.object(forKey: manualSpentKey) as? Double ?? 0.0
         self.totalSpentAllTime = UserDefaults.standard.object(forKey: totalSpentKey) as? Double ?? 0.0
+        self.totalPromptCount = UserDefaults.standard.object(forKey: totalCountKey) as? Int ?? 0
         loadPromptHistory()
         
         // One-time migration: if totalSpentAllTime is 0 but we have prompt history, migrate
@@ -77,6 +80,12 @@ class OpenAIService: ObservableObject {
             let historicalTotal = promptHistory.reduce(0) { $0 + $1.estimatedCost }
             totalSpentAllTime = historicalTotal
             UserDefaults.standard.set(totalSpentAllTime, forKey: totalSpentKey)
+        }
+        
+        // One-time migration: if totalPromptCount is 0 but we have prompt history, migrate
+        if totalPromptCount == 0 && !promptHistory.isEmpty {
+            totalPromptCount = promptHistory.count
+            UserDefaults.standard.set(totalPromptCount, forKey: totalCountKey)
         }
         
         // Validate API key is loaded
@@ -521,9 +530,11 @@ class OpenAIService: ObservableObject {
     
     private func addToHistory(_ item: PromptHistoryItem) {
         DispatchQueue.main.async {
-            // Add cost to total before adding to history
+            // Add cost to total and increment count
             self.totalSpentAllTime += item.estimatedCost
+            self.totalPromptCount += 1
             UserDefaults.standard.set(self.totalSpentAllTime, forKey: self.totalSpentKey)
+            UserDefaults.standard.set(self.totalPromptCount, forKey: self.totalCountKey)
             
             self.promptHistory.insert(item, at: 0) // Add to beginning for newest first
             

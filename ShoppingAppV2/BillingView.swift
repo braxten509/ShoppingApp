@@ -215,9 +215,14 @@ struct BillingView: View {
                                 Text("Interactions")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                Text("\(openAIService.promptHistory.count)")
+                                Text("\(openAIService.totalPromptCount)")
                                     .font(.title3)
                                     .fontWeight(.bold)
+                                if openAIService.totalPromptCount > openAIService.promptHistory.count {
+                                    Text("(\(openAIService.promptHistory.count) shown)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
                         

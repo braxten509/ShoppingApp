@@ -53,7 +53,7 @@ struct PromptHistoryItem: Identifiable, Codable {
 }
 
 class OpenAIService: ObservableObject {
-    private let apiKey = "YOUR_API_KEY_HERE" // TODO: Replace with your OpenAI API key
+    private let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""
     private let baseURL = "https://api.openai.com/v1/chat/completions"
     private let billingURL = "https://api.openai.com/v1/dashboard/billing/credit_grants"
     
@@ -68,6 +68,13 @@ class OpenAIService: ObservableObject {
         self.initialCredits = UserDefaults.standard.object(forKey: initialCreditsKey) as? Double ?? 0.0
         self.manualSpentAdjustment = UserDefaults.standard.object(forKey: manualSpentKey) as? Double ?? 0.0
         loadPromptHistory()
+        
+        // Validate API key is loaded
+        if apiKey.isEmpty {
+            print("⚠️ WARNING: OpenAI API key not found. Please set OPENAI_API_KEY in your scheme's environment variables.")
+        } else {
+            print("✅ OpenAI API key loaded successfully")
+        }
     }
     
     func analyzeItemForTax(itemName: String, location: String? = nil) async throws -> Double? {

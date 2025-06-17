@@ -218,11 +218,6 @@ struct BillingView: View {
                                 Text("\(openAIService.totalPromptCount)")
                                     .font(.title3)
                                     .fontWeight(.bold)
-                                if openAIService.totalPromptCount > openAIService.promptHistory.count {
-                                    Text("(\(openAIService.promptHistory.count) shown)")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
                             }
                         }
                         
@@ -255,11 +250,11 @@ struct BillingView: View {
                     }
                     .padding(.vertical, 4)
                     
-                    if !openAIService.promptHistory.isEmpty {
-                        let imageAnalysisCount = openAIService.promptHistory.filter { $0.type == "Image Analysis" }.count
-                        let taxLookupCount = openAIService.promptHistory.filter { $0.type == "Tax Lookup" }.count
-                        let imageAnalysisCost = openAIService.promptHistory.filter { $0.type == "Image Analysis" }.reduce(0) { $0 + $1.estimatedCost }
-                        let taxLookupCost = openAIService.promptHistory.filter { $0.type == "Tax Lookup" }.reduce(0) { $0 + $1.estimatedCost }
+                    if openAIService.totalPromptCount > 0 {
+                        let imageAnalysisCount = openAIService.totalImageAnalysisCount
+                        let taxLookupCount = openAIService.totalTaxLookupCount
+                        let imageAnalysisCost = openAIService.totalImageAnalysisCost
+                        let taxLookupCost = openAIService.totalTaxLookupCost
                         
                         Divider()
                         

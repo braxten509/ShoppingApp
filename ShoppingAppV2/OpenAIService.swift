@@ -60,12 +60,20 @@ class OpenAIService: ObservableObject {
     @Published var promptHistory: [PromptHistoryItem] = []
     @Published var totalSpentAllTime: Double = 0.0
     @Published var totalPromptCount: Int = 0
+    @Published var totalImageAnalysisCount: Int = 0
+    @Published var totalTaxLookupCount: Int = 0
+    @Published var totalImageAnalysisCost: Double = 0.0
+    @Published var totalTaxLookupCost: Double = 0.0
     
     private let historyKey = "prompt_history"
     private let initialCreditsKey = "initial_api_credits"
     private let manualSpentKey = "manual_spent_credits"
     private let totalSpentKey = "total_spent_all_time"
     private let totalCountKey = "total_prompt_count"
+    private let totalImageAnalysisCountKey = "total_image_analysis_count"
+    private let totalTaxLookupCountKey = "total_tax_lookup_count"
+    private let totalImageAnalysisCostKey = "total_image_analysis_cost"
+    private let totalTaxLookupCostKey = "total_tax_lookup_cost"
     
     init() {
         // Load initial values from UserDefaults
@@ -73,6 +81,10 @@ class OpenAIService: ObservableObject {
         self.manualSpentAdjustment = UserDefaults.standard.object(forKey: manualSpentKey) as? Double ?? 0.0
         self.totalSpentAllTime = UserDefaults.standard.object(forKey: totalSpentKey) as? Double ?? 0.0
         self.totalPromptCount = UserDefaults.standard.object(forKey: totalCountKey) as? Int ?? 0
+        self.totalImageAnalysisCount = UserDefaults.standard.object(forKey: totalImageAnalysisCountKey) as? Int ?? 0
+        self.totalTaxLookupCount = UserDefaults.standard.object(forKey: totalTaxLookupCountKey) as? Int ?? 0
+        self.totalImageAnalysisCost = UserDefaults.standard.object(forKey: totalImageAnalysisCostKey) as? Double ?? 0.0
+        self.totalTaxLookupCost = UserDefaults.standard.object(forKey: totalTaxLookupCostKey) as? Double ?? 0.0
         loadPromptHistory()
         
         // One-time migration: if totalSpentAllTime is 0 but we have prompt history, migrate
@@ -86,6 +98,22 @@ class OpenAIService: ObservableObject {
         if totalPromptCount == 0 && !promptHistory.isEmpty {
             totalPromptCount = promptHistory.count
             UserDefaults.standard.set(totalPromptCount, forKey: totalCountKey)
+        }
+        
+        // One-time migration: if type-specific counts are 0 but we have prompt history, migrate
+        if totalImageAnalysisCount == 0 && totalTaxLookupCount == 0 && !promptHistory.isEmpty {
+            let imageItems = promptHistory.filter { $0.type == "Image Analysis" }
+            let taxItems = promptHistory.filter { $0.type == "Tax Lookup" }
+            
+            totalImageAnalysisCount = imageItems.count
+            totalTaxLookupCount = taxItems.count
+            totalImageAnalysisCost = imageItems.reduce(0) { $0 + $1.estimatedCost }
+            totalTaxLookupCost = taxItems.reduce(0) { $0 + $1.estimatedCost }
+            
+            UserDefaults.standard.set(totalImageAnalysisCount, forKey: totalImageAnalysisCountKey)
+            UserDefaults.standard.set(totalTaxLookupCount, forKey: totalTaxLookupCountKey)
+            UserDefaults.standard.set(totalImageAnalysisCost, forKey: totalImageAnalysisCostKey)
+            UserDefaults.standard.set(totalTaxLookupCost, forKey: totalTaxLookupCostKey)
         }
         
         // Validate API key is loaded
@@ -533,6 +561,20 @@ class OpenAIService: ObservableObject {
             // Add cost to total and increment count
             self.totalSpentAllTime += item.estimatedCost
             self.totalPromptCount += 1
+            
+            // Update type-specific tracking
+            if item.type == "Image Analysis" {
+                self.totalImageAnalysisCount += 1
+                self.totalImageAnalysisCost += item.estimatedCost
+                UserDefaults.standard.set(self.totalImageAnalysisCount, forKey: self.totalImageAnalysisCountKey)
+                UserDefaults.standard.set(self.totalImageAnalysisCost, forKey: self.totalImageAnalysisCostKey)
+            } else if item.type == "Tax Lookup" {
+                self.totalTaxLookupCount += 1
+                self.totalTaxLookupCost += item.estimatedCost
+                UserDefaults.standard.set(self.totalTaxLookupCount, forKey: self.totalTaxLookupCountKey)
+                UserDefaults.standard.set(self.totalTaxLookupCost, forKey: self.totalTaxLookupCostKey)
+            }
+            
             UserDefaults.standard.set(self.totalSpentAllTime, forKey: self.totalSpentKey)
             UserDefaults.standard.set(self.totalPromptCount, forKey: self.totalCountKey)
             
@@ -628,28 +670,22 @@ class OpenAIService: ObservableObject {
     
     // Usage Estimates
     var averageImageAnalysisCost: Double {
-        let imageAnalysisItems = promptHistory.filter { $0.type == "Image Analysis" }
-        guard !imageAnalysisItems.isEmpty else { return 0.003 } // Default estimate
-        let totalCost = imageAnalysisItems.reduce(0) { $0 + $1.estimatedCost }
-        return totalCost / Double(imageAnalysisItems.count)
+        guard totalImageAnalysisCount > 0 else { return 0.003 } // Default estimate
+        return totalImageAnalysisCost / Double(totalImageAnalysisCount)
     }
     
     var averageTaxLookupCost: Double {
-        let taxLookupItems = promptHistory.filter { $0.type == "Tax Lookup" }
-        guard !taxLookupItems.isEmpty else { return 0.001 } // Default estimate
-        let totalCost = taxLookupItems.reduce(0) { $0 + $1.estimatedCost }
-        return totalCost / Double(taxLookupItems.count)
+        guard totalTaxLookupCount > 0 else { return 0.001 } // Default estimate
+        return totalTaxLookupCost / Double(totalTaxLookupCount)
     }
     
     var estimatedScansRemaining: Int? {
-        let imageAnalysisItems = promptHistory.filter { $0.type == "Image Analysis" }
-        guard remainingCredits > 0 && !imageAnalysisItems.isEmpty else { return nil }
+        guard remainingCredits > 0 && totalImageAnalysisCount > 0 else { return nil }
         return Int(remainingCredits / averageImageAnalysisCost)
     }
     
     var estimatedManualInteractionsRemaining: Int? {
-        let taxLookupItems = promptHistory.filter { $0.type == "Tax Lookup" }
-        guard remainingCredits > 0 && !taxLookupItems.isEmpty else { return nil }
+        guard remainingCredits > 0 && totalTaxLookupCount > 0 else { return nil }
         return Int(remainingCredits / averageTaxLookupCost)
     }
     

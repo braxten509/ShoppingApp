@@ -14,24 +14,23 @@ struct VerifyItemView: View {
     @Environment(\.presentationMode) var presentationMode
     let onRetakePhoto: (() -> Void)?
     let originalImage: UIImage?
-    let onRetryAnalysis: ((UIImage) -> Void)?
     
     @State private var name: String
     @State private var costString: String
     @State private var taxRateString: String
     @State private var isAnalyzingAdditives = false
+    @State private var isRetryingAnalysis = false
     @State private var riskyAdditives = 0
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
     
-    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, onRetryAnalysis: ((UIImage) -> Void)? = nil) {
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil) {
         self.extractedInfo = extractedInfo
         self.store = store
         self.settingsStore = settingsStore
         self.openAIService = openAIService
         self.onRetakePhoto = onRetakePhoto
         self.originalImage = originalImage
-        self.onRetryAnalysis = onRetryAnalysis
         self._name = State(initialValue: extractedInfo.name)
         self._costString = State(initialValue: String(format: "%.2f", extractedInfo.price))
         self._taxRateString = State(initialValue: String(format: "%.2f", extractedInfo.taxRate ?? 0.0))
@@ -103,11 +102,20 @@ struct VerifyItemView: View {
                 }
                 
                 Section(header: Text("Actions")) {
-                    if let originalImage = originalImage, let onRetryAnalysis = onRetryAnalysis {
-                        Button("Retry Analysis") {
-                            onRetryAnalysis(originalImage)
+                    if let originalImage = originalImage {
+                        if isRetryingAnalysis {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Retrying analysis...")
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            Button("Retry Analysis") {
+                                retryAnalysis(with: originalImage)
+                            }
+                            .foregroundColor(.blue)
                         }
-                        .foregroundColor(.blue)
                     }
                     
                     if let onRetakePhoto = onRetakePhoto {
@@ -224,4 +232,25 @@ struct VerifyItemView: View {
         }
     }
     
+    private func retryAnalysis(with image: UIImage) {
+        isRetryingAnalysis = true
+        
+        Task {
+            do {
+                let newInfo = try await openAIService.analyzePriceTag(image: image, location: nil)
+                
+                DispatchQueue.main.async {
+                    self.name = newInfo.name
+                    self.costString = String(format: "%.2f", newInfo.price)
+                    self.taxRateString = String(format: "%.2f", newInfo.taxRate ?? 0.0)
+                    self.isRetryingAnalysis = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isRetryingAnalysis = false
+                    print("Error retrying analysis: \(error)")
+                }
+            }
+        }
+    }
 }

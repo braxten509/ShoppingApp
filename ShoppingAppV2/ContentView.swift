@@ -91,11 +91,7 @@ struct ContentView: View {
                                 showingCamera = true
                             }
                         },
-                        originalImage: lastProcessedImage,
-                        onRetryAnalysis: { image in
-                            // Retry analysis with same image
-                            processImage(image)
-                        }
+                        originalImage: lastProcessedImage
                     )
                 }
             }

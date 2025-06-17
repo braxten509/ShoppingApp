@@ -114,6 +114,7 @@ struct VerifyItemView: View {
                             }
                         } else {
                             Button("Retry Analysis") {
+                                isRetryingAnalysis = true
                                 retryAnalysis(with: originalImage)
                             }
                             .foregroundColor(.blue)
@@ -235,8 +236,6 @@ struct VerifyItemView: View {
     }
     
     private func retryAnalysis(with image: UIImage) {
-        isRetryingAnalysis = true
-        
         Task {
             do {
                 let newInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)

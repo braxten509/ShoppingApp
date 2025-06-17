@@ -105,6 +105,10 @@ struct VerifyItemView: View {
                 
                 Section(header: Text("Actions")) {
                     if let originalImage = originalImage {
+                        Text("Debug: isRetryingAnalysis = \(isRetryingAnalysis ? "true" : "false")")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        
                         if isRetryingAnalysis {
                             HStack {
                                 ProgressView()
@@ -114,11 +118,16 @@ struct VerifyItemView: View {
                             }
                         } else {
                             Button("Retry Analysis") {
+                                print("🔘 Button tapped, isRetryingAnalysis before: \(isRetryingAnalysis)")
                                 Task { @MainActor in
+                                    print("🔄 Setting isRetryingAnalysis to true")
                                     isRetryingAnalysis = true
+                                    print("🔄 isRetryingAnalysis is now: \(isRetryingAnalysis)")
                                     // Small delay to ensure UI updates
                                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                                    print("🔄 Starting retry analysis")
                                     await retryAnalysis(with: originalImage)
+                                    print("🔄 Retry analysis completed")
                                 }
                             }
                             .foregroundColor(.blue)
@@ -243,13 +252,19 @@ struct VerifyItemView: View {
     @MainActor
     private func retryAnalysis(with image: UIImage) async {
         do {
+            print("📡 Starting OpenAI analysis...")
             let newInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)
+            print("✅ OpenAI analysis successful")
             
             self.name = newInfo.name
             self.costString = String(format: "%.2f", newInfo.price)
             self.taxRateString = String(format: "%.2f", newInfo.taxRate ?? 0.0)
+            print("🔄 Setting isRetryingAnalysis to false")
             self.isRetryingAnalysis = false
+            print("🔄 isRetryingAnalysis is now: \(self.isRetryingAnalysis)")
         } catch {
+            print("❌ Error in analysis: \(error)")
+            print("🔄 Setting isRetryingAnalysis to false due to error")
             self.isRetryingAnalysis = false
             print("Error retrying analysis: \(error)")
         }

@@ -14,6 +14,7 @@ struct VerifyItemView: View {
     @Environment(\.presentationMode) var presentationMode
     let onRetakePhoto: (() -> Void)?
     let originalImage: UIImage?
+    let locationString: String?
     
     @State private var name: String
     @State private var costString: String
@@ -24,13 +25,14 @@ struct VerifyItemView: View {
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
     
-    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil) {
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil) {
         self.extractedInfo = extractedInfo
         self.store = store
         self.settingsStore = settingsStore
         self.openAIService = openAIService
         self.onRetakePhoto = onRetakePhoto
         self.originalImage = originalImage
+        self.locationString = locationString
         self._name = State(initialValue: extractedInfo.name)
         self._costString = State(initialValue: String(format: "%.2f", extractedInfo.price))
         self._taxRateString = State(initialValue: String(format: "%.2f", extractedInfo.taxRate ?? 0.0))
@@ -237,7 +239,7 @@ struct VerifyItemView: View {
         
         Task {
             do {
-                let newInfo = try await openAIService.analyzePriceTag(image: image, location: nil)
+                let newInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)
                 
                 DispatchQueue.main.async {
                     self.name = newInfo.name

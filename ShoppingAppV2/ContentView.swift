@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var editingItem: ShoppingItem?
     @State private var extractedInfo: PriceTagInfo?
     @State private var lastProcessedImage: UIImage?
+    @State private var lastLocationString: String?
     @State private var isProcessingImage = false
     @State private var showingClearConfirmation = false
     @State private var showingSettings = false
@@ -91,7 +92,8 @@ struct ContentView: View {
                                 showingCamera = true
                             }
                         },
-                        originalImage: lastProcessedImage
+                        originalImage: lastProcessedImage,
+                        locationString: lastLocationString
                     )
                 }
             }
@@ -337,6 +339,8 @@ struct ContentView: View {
             
             return components.isEmpty ? nil : components.joined(separator: ", ")
         }()
+        
+        lastLocationString = locationString
         
         Task {
             do {

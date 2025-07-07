@@ -15,3 +15,7 @@ struct ShoppingAppV2App: App {
         }
     }
 }
+
+#Preview {
+    ContentView()
+}

@@ -83,7 +83,11 @@ struct ContentView: View {
                 AddItemView(store: store, locationManager: locationManager, openAIService: openAIService, settingsStore: settingsStore)
             }
             .sheet(item: $editingItem) { item in
-                ItemEditView(item: bindingForItem(item))
+                ItemEditView(
+                    item: bindingForItem(item),
+                    openAIService: openAIService,
+                    locationManager: locationManager
+                )
             }
             .sheet(isPresented: $showingVerifyItem) {
                 if let info = extractedInfo {
@@ -105,7 +109,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(openAIService: openAIService, settingsStore: settingsStore)
+                SettingsView(openAIService: openAIService, settingsStore: settingsStore, store: store)
             }
             .sheet(isPresented: $showingAdditiveDetail) {
                 if let item = selectedItemForAdditives {
@@ -142,7 +146,10 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
-                .background(Color(.systemGray6))
+                .background(
+                    Color(.systemGray6)
+                        .ignoresSafeArea(edges: .top)
+                )
             }
         }
     }
@@ -189,19 +196,60 @@ struct ContentView: View {
             ForEach(Array(store.items.enumerated()), id: \.element.id) { index, item in
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name)
-                            .font(.headline)
                         HStack {
-                            Text("$\(item.cost, specifier: "%.2f")")
-                            if item.hasUnknownTax {
-                                Text("+ Unknown tax")
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("+ \(item.taxRate, specifier: "%.1f")% tax")
-                                    .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.name)
+                                    .font(.headline)
+                                HStack {
+                                    if item.quantity > 1 {
+                                        Text("$\(item.unitCost, specifier: "%.2f") each")
+                                    } else {
+                                        Text("$\(item.cost, specifier: "%.2f")")
+                                    }
+                                    if item.hasUnknownTax {
+                                        Text("+ Unknown tax")
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("+ \(item.taxRate, specifier: "%.1f")% tax")
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .font(.caption)
                             }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                editingItem = item
+                            }
+                            
+                            Spacer()
+                            
+                            // Quantity controls
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    decreaseQuantity(at: index)
+                                }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundColor(item.quantity > 1 ? .red : .gray)
+                                        .font(.system(size: 22))
+                                }
+                                .disabled(item.quantity <= 1)
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Text("\(item.quantity)")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .frame(minWidth: 25)
+                                
+                                Button(action: {
+                                    increaseQuantity(at: index)
+                                }) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.system(size: 22))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.horizontal, 8)
                         }
-                        .font(.caption)
                     }
                     
                     Spacer()
@@ -251,10 +299,6 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    editingItem = item
-                }
             }
             .onDelete(perform: deleteItems)
         }
@@ -280,12 +324,12 @@ struct ContentView: View {
                 }) {
                     HStack {
                         Image(systemName: "camera.fill")
-                        Text("Scan Tag")
+                        Text("Scan Tag/Item")
                     }
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
                     .background(isProcessingImage ? Color.gray : Color.blue)
                     .cornerRadius(12)
                 }
@@ -298,10 +342,10 @@ struct ContentView: View {
                         Image(systemName: "plus")
                         Text("Add Manually")
                     }
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
                     .background(isProcessingImage ? Color.gray : Color.green)
                     .cornerRadius(12)
                 }
@@ -316,6 +360,16 @@ struct ContentView: View {
         for index in offsets {
             store.removeItem(at: index)
         }
+    }
+    
+    private func increaseQuantity(at index: Int) {
+        guard index < store.items.count else { return }
+        store.items[index].quantity += 1
+    }
+    
+    private func decreaseQuantity(at index: Int) {
+        guard index < store.items.count && store.items[index].quantity > 1 else { return }
+        store.items[index].quantity -= 1
     }
     
     private func bindingForItem(_ item: ShoppingItem) -> Binding<ShoppingItem> {

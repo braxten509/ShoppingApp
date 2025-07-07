@@ -35,9 +35,17 @@ struct PromptsHistoryView: View {
                         }) {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text(item.type)
-                                        .font(.headline)
-                                        .foregroundColor(item.type == "Image Analysis" ? .purple : .orange)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.type)
+                                            .font(.headline)
+                                            .foregroundColor(colorForItem(item))
+                                        
+                                        if let aiService = item.aiService, let _ = item.model {
+                                            Text("\(aiService)")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
                                     
                                     Spacer()
                                     
@@ -140,6 +148,27 @@ struct PromptsHistoryView: View {
             openAIService.removePromptHistoryItem(at: index)
         }
     }
+    
+    private func colorForItem(_ item: PromptHistoryItem) -> Color {
+        if let aiService = item.aiService {
+            switch aiService {
+            case "OpenAI":
+                return .green
+            case "Perplexity":
+                return .blue
+            default:
+                return .primary
+            }
+        }
+        // Fallback for items without aiService (older data)
+        if item.type == "Image Analysis" {
+            return .green
+        } else if item.type.contains("Perplexity") {
+            return .blue
+        } else {
+            return .green
+        }
+    }
 }
 
 struct PromptDetailView: View {
@@ -153,10 +182,18 @@ struct PromptDetailView: View {
                     // Header Info
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text(prompt.type)
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(prompt.type == "Image Analysis" ? .purple : .orange)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(prompt.type)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(colorForPrompt(prompt))
+                                
+                                if let aiService = prompt.aiService, let model = prompt.model {
+                                    Text("\(aiService) - \(model)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                             
                             Spacer()
                             
@@ -262,6 +299,27 @@ struct PromptDetailView: View {
                     }
                 }
             }
+        }
+    }
+    
+    private func colorForPrompt(_ prompt: PromptHistoryItem) -> Color {
+        if let aiService = prompt.aiService {
+            switch aiService {
+            case "OpenAI":
+                return .green
+            case "Perplexity":
+                return .blue
+            default:
+                return .primary
+            }
+        }
+        // Fallback for items without aiService (older data)
+        if prompt.type == "Image Analysis" {
+            return .green
+        } else if prompt.type.contains("Perplexity") {
+            return .blue
+        } else {
+            return .green
         }
     }
 }

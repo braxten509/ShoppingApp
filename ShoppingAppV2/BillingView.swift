@@ -13,6 +13,26 @@ struct BillingView: View {
     var body: some View {
         NavigationView {
             List {
+                // Display Settings Section
+                Section {
+                    HStack {
+                        Text("Decimal Places:")
+                        Spacer()
+                        Picker("", selection: $openAIService.billingDecimalPlaces) {
+                            ForEach(2...6, id: \.self) { places in
+                                Text("\(places)").tag(places)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .labelsHidden()
+                    }
+                } header: {
+                    Text("Display Settings")
+                } footer: {
+                    Text("Decimal places for currency amounts (rounded down).")
+                        .font(.caption)
+                }
+                
                 // Current Balance Section
                 Section {
                     VStack(spacing: 16) {
@@ -31,14 +51,14 @@ struct BillingView: View {
                             }
                             
                             HStack(spacing: 3) {
-                                Text("$\(openAIService.totalSpent, specifier: "%.6f")")
+                                Text("$\(openAIService.formatBillingCurrency(openAIService.totalSpent))")
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.red)
                                 Text("/")
                                     .font(.title3)
                                     .foregroundColor(.secondary)
-                                Text("$\(formatCurrency(openAIService.initialCredits))")
+                                Text("$\(openAIService.formatBillingCurrency(openAIService.initialCredits))")
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.primary)
@@ -48,7 +68,7 @@ struct BillingView: View {
                                 Text("Remaining:")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
-                                Text("$\(openAIService.remainingCredits, specifier: "%.6f")")
+                                Text("$\(openAIService.formatBillingCurrency(openAIService.remainingCredits))")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                                     .foregroundColor(openAIService.remainingCredits > 0 ? .green : .red)
@@ -106,16 +126,46 @@ struct BillingView: View {
                                     HStack {
                                         Image(systemName: "camera.fill")
                                             .font(.caption)
-                                            .foregroundColor(.purple)
-                                        Text("Scans Remaining")
+                                            .foregroundColor(.green)
+                                        Text("Scans")
                                             .font(.subheadline)
                                             .fontWeight(.medium)
                                     }
+                                    Text("OpenAI")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
                                     if let scansRemaining = openAIService.estimatedScansRemaining {
                                         Text("\(scansRemaining)")
                                             .font(.title2)
                                             .fontWeight(.bold)
-                                            .foregroundColor(.purple)
+                                            .foregroundColor(.green)
+                                    } else {
+                                        Text("Unknown")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                VStack(alignment: .center, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "plus")
+                                            .font(.caption)
+                                            .foregroundColor(.green)
+                                        Text("Manual")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                    }
+                                    Text("OpenAI")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    if let manualRemaining = openAIService.estimatedManualInteractionsRemaining {
+                                        Text("\(manualRemaining)")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.green)
                                     } else {
                                         Text("Unknown")
                                             .font(.title2)
@@ -128,18 +178,21 @@ struct BillingView: View {
                                 
                                 VStack(alignment: .trailing, spacing: 4) {
                                     HStack {
-                                        Text("Manual Entries")
+                                        Text("Price Search")
                                             .font(.subheadline)
                                             .fontWeight(.medium)
-                                        Image(systemName: "plus")
+                                        Image(systemName: "magnifyingglass")
                                             .font(.caption)
-                                            .foregroundColor(.orange)
+                                            .foregroundColor(.blue)
                                     }
-                                    if let manualRemaining = openAIService.estimatedManualInteractionsRemaining {
-                                        Text("\(manualRemaining)")
+                                    Text("Perplexity")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    if let searchRemaining = openAIService.estimatedPerplexitySearchesRemaining {
+                                        Text("\(searchRemaining)")
                                             .font(.title2)
                                             .fontWeight(.bold)
-                                            .foregroundColor(.orange)
+                                            .foregroundColor(.blue)
                                     } else {
                                         Text("Unknown")
                                             .font(.title2)
@@ -160,7 +213,7 @@ struct BillingView: View {
                                 HStack {
                                     let imageAnalysisItems = openAIService.promptHistory.filter { $0.type == "Image Analysis" }
                                     if !imageAnalysisItems.isEmpty {
-                                        Text("• Scans: $\(openAIService.averageImageAnalysisCost, specifier: "%.6f") each")
+                                        Text("• Scans: $\(openAIService.formatBillingCurrency(openAIService.averageImageAnalysisCost)) each")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
                                     } else {
@@ -174,11 +227,25 @@ struct BillingView: View {
                                 HStack {
                                     let taxLookupItems = openAIService.promptHistory.filter { $0.type == "Tax Lookup" }
                                     if !taxLookupItems.isEmpty {
-                                        Text("• Manual: $\(openAIService.averageTaxLookupCost, specifier: "%.6f") each")
+                                        Text("• Manual: $\(openAIService.formatBillingCurrency(openAIService.averageTaxLookupCost)) each")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
                                     } else {
                                         Text("• Manual: No history yet")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                }
+                                
+                                HStack {
+                                    let perplexityItems = openAIService.promptHistory.filter { $0.type.contains("Perplexity") }
+                                    if !perplexityItems.isEmpty {
+                                        Text("• Price Search: $\(openAIService.formatBillingCurrency(openAIService.averagePerplexitySearchCost)) each")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("• Price Search: No history yet")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
                                     }
@@ -203,7 +270,7 @@ struct BillingView: View {
                                 Text("Total Spent")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                Text("$\(openAIService.totalSpent, specifier: "%.6f")")
+                                Text("$\(openAIService.formatBillingCurrency(openAIService.totalSpent))")
                                     .font(.title3)
                                     .fontWeight(.bold)
                                     .foregroundColor(.red)
@@ -228,7 +295,7 @@ struct BillingView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                Text("$\(openAIService.totalSpentAllTime, specifier: "%.6f")")
+                                Text("$\(openAIService.formatBillingCurrency(openAIService.totalSpentAllTime))")
                                     .font(.caption)
                                     .fontWeight(.medium)
                             }
@@ -239,7 +306,7 @@ struct BillingView: View {
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    Text("$\(openAIService.manualSpentAdjustment, specifier: "%.6f")")
+                                    Text("$\(openAIService.formatBillingCurrency(openAIService.manualSpentAdjustment))")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                         .foregroundColor(openAIService.manualSpentAdjustment >= 0 ? .blue : .green)
@@ -252,8 +319,10 @@ struct BillingView: View {
                     if openAIService.totalPromptCount > 0 {
                         let imageAnalysisCount = openAIService.totalImageAnalysisCount
                         let taxLookupCount = openAIService.totalTaxLookupCount
+                        let perplexitySearchCount = openAIService.totalPerplexitySearchCount
                         let imageAnalysisCost = openAIService.totalImageAnalysisCost
                         let taxLookupCost = openAIService.totalTaxLookupCost
+                        let perplexitySearchCost = openAIService.totalPerplexitySearchCost
                         
                         Divider()
                         
@@ -261,17 +330,22 @@ struct BillingView: View {
                             HStack {
                                 HStack {
                                     Circle()
-                                        .fill(Color.purple)
+                                        .fill(Color.green)
                                         .frame(width: 8, height: 8)
-                                    Text("Image Analysis")
-                                        .font(.caption)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text("Image Analysis")
+                                            .font(.caption)
+                                        Text("OpenAI")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 Text("\(imageAnalysisCount)")
                                     .font(.caption)
                                     .fontWeight(.medium)
                                 Spacer()
-                                Text("$\(imageAnalysisCost, specifier: "%.6f")")
+                                Text("$\(openAIService.formatBillingCurrency(imageAnalysisCost))")
                                     .font(.caption)
                                     .fontWeight(.medium)
                             }
@@ -279,17 +353,45 @@ struct BillingView: View {
                             HStack {
                                 HStack {
                                     Circle()
-                                        .fill(Color.orange)
+                                        .fill(Color.green)
                                         .frame(width: 8, height: 8)
-                                    Text("Tax Lookup")
-                                        .font(.caption)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text("Tax Lookup")
+                                            .font(.caption)
+                                        Text("OpenAI")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 Text("\(taxLookupCount)")
                                     .font(.caption)
                                     .fontWeight(.medium)
                                 Spacer()
-                                Text("$\(taxLookupCost, specifier: "%.6f")")
+                                Text("$\(openAIService.formatBillingCurrency(taxLookupCost))")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            
+                            HStack {
+                                HStack {
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 8, height: 8)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text("Price Search")
+                                            .font(.caption)
+                                        Text("Perplexity")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text("\(perplexitySearchCount)")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text("$\(openAIService.formatBillingCurrency(perplexitySearchCost))")
                                     .font(.caption)
                                     .fontWeight(.medium)
                             }
@@ -366,11 +468,11 @@ struct BillingView: View {
                     message: Text("Choose what you'd like to edit"),
                     buttons: [
                         .default(Text("Edit Budget Amount")) {
-                            newCreditsString = formatCurrency(openAIService.initialCredits)
+                            newCreditsString = openAIService.formatBillingCurrency(openAIService.initialCredits)
                             showingEditCredits = true
                         },
                         .default(Text("Edit Total Spent")) {
-                            newSpentString = String(format: "%.6f", openAIService.totalSpent)
+                            newSpentString = openAIService.formatBillingCurrency(openAIService.totalSpent)
                             showingEditSpent = true
                         },
                         .cancel()

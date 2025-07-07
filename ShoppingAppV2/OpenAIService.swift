@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-struct OpenAIResponse: Codable {
+struct AIResponse: Codable {
     let choices: [Choice]
     let usage: Usage?
     
@@ -38,8 +38,10 @@ struct PromptHistoryItem: Identifiable, Codable {
     let inputTokens: Int
     let outputTokens: Int
     let itemName: String? // For context
+    let aiService: String? // "OpenAI" or "Perplexity"
+    let model: String? // "gpt-4o-mini", "llama-3.1-sonar-small-128k-online", etc.
     
-    init(timestamp: Date, type: String, prompt: String, response: String, estimatedCost: Double, inputTokens: Int, outputTokens: Int, itemName: String? = nil) {
+    init(timestamp: Date, type: String, prompt: String, response: String, estimatedCost: Double, inputTokens: Int, outputTokens: Int, itemName: String? = nil, aiService: String? = nil, model: String? = nil) {
         self.id = UUID()
         self.timestamp = timestamp
         self.type = type
@@ -49,12 +51,24 @@ struct PromptHistoryItem: Identifiable, Codable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.itemName = itemName
+        self.aiService = aiService
+        self.model = model
     }
 }
 
 class OpenAIService: ObservableObject {
-    private let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""
+    @Published var apiKey: String = "" {
+        didSet {
+            UserDefaults.standard.set(apiKey, forKey: apiKeyStorageKey)
+        }
+    }
+    @Published var perplexityApiKey: String = "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" {
+        didSet {
+            UserDefaults.standard.set(perplexityApiKey, forKey: perplexityApiKeyStorageKey)
+        }
+    }
     private let baseURL = "https://api.openai.com/v1/chat/completions"
+    private let perplexityURL = "https://api.perplexity.ai/chat/completions"
     private let billingURL = "https://api.openai.com/v1/dashboard/billing/credit_grants"
     
     @Published var promptHistory: [PromptHistoryItem] = []
@@ -62,12 +76,21 @@ class OpenAIService: ObservableObject {
     @Published var totalPromptCount: Int = 0
     @Published var totalImageAnalysisCount: Int = 0
     @Published var totalTaxLookupCount: Int = 0
+    @Published var totalPerplexitySearchCount: Int = 0
     @Published var totalImageAnalysisCost: Double = 0.0
     @Published var totalTaxLookupCost: Double = 0.0
+    @Published var totalPerplexitySearchCost: Double = 0.0
     @Published var spentBaseline: Double = 0.0
     @Published var baselineSetDate: Date?
     @Published var spentSinceBaselineAmount: Double = 0.0
+    @Published var billingDecimalPlaces: Int = 6 {
+        didSet {
+            UserDefaults.standard.set(billingDecimalPlaces, forKey: billingDecimalPlacesKey)
+        }
+    }
     
+    private let apiKeyStorageKey = "openai_api_key"
+    private let perplexityApiKeyStorageKey = "perplexity_api_key"
     private let historyKey = "prompt_history"
     private let initialCreditsKey = "initial_api_credits"
     private let manualSpentKey = "manual_spent_credits" // Legacy key
@@ -78,10 +101,27 @@ class OpenAIService: ObservableObject {
     private let totalCountKey = "total_prompt_count"
     private let totalImageAnalysisCountKey = "total_image_analysis_count"
     private let totalTaxLookupCountKey = "total_tax_lookup_count"
+    private let totalPerplexitySearchCountKey = "total_perplexity_search_count"
     private let totalImageAnalysisCostKey = "total_image_analysis_cost"
     private let totalTaxLookupCostKey = "total_tax_lookup_cost"
+    private let totalPerplexitySearchCostKey = "total_perplexity_search_cost"
+    private let billingDecimalPlacesKey = "billing_decimal_places"
     
     init() {
+        // Load API key from UserDefaults first, fallback to environment variable
+        if let storedKey = UserDefaults.standard.string(forKey: apiKeyStorageKey), !storedKey.isEmpty {
+            self.apiKey = storedKey
+        } else if let envKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !envKey.isEmpty {
+            self.apiKey = envKey
+            // Save it to UserDefaults for future use
+            UserDefaults.standard.set(envKey, forKey: apiKeyStorageKey)
+        }
+        
+        // Load Perplexity API key from UserDefaults
+        if let storedPerplexityKey = UserDefaults.standard.string(forKey: perplexityApiKeyStorageKey), !storedPerplexityKey.isEmpty {
+            self.perplexityApiKey = storedPerplexityKey
+        }
+        
         // Load initial values from UserDefaults
         self.initialCredits = UserDefaults.standard.object(forKey: initialCreditsKey) as? Double ?? 0.0
         self.manualSpentAdjustment = UserDefaults.standard.object(forKey: manualSpentKey) as? Double ?? 0.0
@@ -94,8 +134,11 @@ class OpenAIService: ObservableObject {
         self.totalPromptCount = UserDefaults.standard.object(forKey: totalCountKey) as? Int ?? 0
         self.totalImageAnalysisCount = UserDefaults.standard.object(forKey: totalImageAnalysisCountKey) as? Int ?? 0
         self.totalTaxLookupCount = UserDefaults.standard.object(forKey: totalTaxLookupCountKey) as? Int ?? 0
+        self.totalPerplexitySearchCount = UserDefaults.standard.object(forKey: totalPerplexitySearchCountKey) as? Int ?? 0
         self.totalImageAnalysisCost = UserDefaults.standard.object(forKey: totalImageAnalysisCostKey) as? Double ?? 0.0
         self.totalTaxLookupCost = UserDefaults.standard.object(forKey: totalTaxLookupCostKey) as? Double ?? 0.0
+        self.totalPerplexitySearchCost = UserDefaults.standard.object(forKey: totalPerplexitySearchCostKey) as? Double ?? 0.0
+        self.billingDecimalPlaces = UserDefaults.standard.object(forKey: billingDecimalPlacesKey) as? Int ?? 6
         loadPromptHistory()
         
         // One-time migration: if totalSpentAllTime is 0 but we have prompt history, migrate
@@ -112,31 +155,36 @@ class OpenAIService: ObservableObject {
         }
         
         // One-time migration: if type-specific counts are 0 but we have prompt history, migrate
-        if totalImageAnalysisCount == 0 && totalTaxLookupCount == 0 && !promptHistory.isEmpty {
+        if totalImageAnalysisCount == 0 && totalTaxLookupCount == 0 && totalPerplexitySearchCount == 0 && !promptHistory.isEmpty {
             let imageItems = promptHistory.filter { $0.type == "Image Analysis" }
             let taxItems = promptHistory.filter { $0.type == "Tax Lookup" }
+            let perplexityItems = promptHistory.filter { $0.type.contains("Perplexity") }
             
             totalImageAnalysisCount = imageItems.count
             totalTaxLookupCount = taxItems.count
+            totalPerplexitySearchCount = perplexityItems.count
             totalImageAnalysisCost = imageItems.reduce(0) { $0 + $1.estimatedCost }
             totalTaxLookupCost = taxItems.reduce(0) { $0 + $1.estimatedCost }
+            totalPerplexitySearchCost = perplexityItems.reduce(0) { $0 + $1.estimatedCost }
             
             UserDefaults.standard.set(totalImageAnalysisCount, forKey: totalImageAnalysisCountKey)
             UserDefaults.standard.set(totalTaxLookupCount, forKey: totalTaxLookupCountKey)
+            UserDefaults.standard.set(totalPerplexitySearchCount, forKey: totalPerplexitySearchCountKey)
             UserDefaults.standard.set(totalImageAnalysisCost, forKey: totalImageAnalysisCostKey)
             UserDefaults.standard.set(totalTaxLookupCost, forKey: totalTaxLookupCostKey)
+            UserDefaults.standard.set(totalPerplexitySearchCost, forKey: totalPerplexitySearchCostKey)
         }
         
         // Validate API key is loaded
         if apiKey.isEmpty {
-            print("⚠️ WARNING: OpenAI API key not found. Please set OPENAI_API_KEY in your scheme's environment variables.")
+            print("⚠️ WARNING: OpenAI API key not found. Please set OPENAI_API_KEY in your scheme's environment variables or in Settings.")
         } else {
             print("✅ OpenAI API key loaded successfully")
         }
     }
     
     func analyzeItemForTax(itemName: String, location: String? = nil) async throws -> Double? {
-        let locationContext = location != nil ? " The user is located in \(location!). Look up the correct sales tax rate for this specific location." : " No location provided."
+        let locationContext = location != nil ? " The user is located in \(location!). Look up the correct sales tax rate for this specific location." : " No location provided. Use a reasonable default tax rate of 6.0% for general sales tax."
         
         let prompt = """
         Based on the item name "\(itemName)" and location information, determine the appropriate sales tax rate.
@@ -146,6 +194,8 @@ class OpenAIService: ObservableObject {
         IMPORTANT: If the item name is ambiguous, unclear, generic (like "test", "123", "item", "thing"), or doesn't represent a real product, return null for the tax rate.
         
         Only provide a tax rate if the item name clearly represents a real, identifiable product that would be subject to sales tax.
+        
+        If no location is provided but the item name is valid, use a reasonable default tax rate (like 6.0%).
         
         Return ONLY a JSON object with the tax rate:
         {"taxRate": 6.0}
@@ -172,7 +222,7 @@ class OpenAIService: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        let response = try JSONDecoder().decode(AIResponse.self, from: data)
         
         guard let content = response.choices.first?.message.content else {
             throw NSError(domain: "OpenAIError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No response content"])
@@ -218,7 +268,9 @@ class OpenAIService: ObservableObject {
                 estimatedCost: cost,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                itemName: itemName
+                itemName: itemName,
+                aiService: "OpenAI",
+                model: "gpt-4o-mini"
             )
             addToHistory(historyItem)
             
@@ -296,7 +348,7 @@ class OpenAIService: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        let response = try JSONDecoder().decode(AIResponse.self, from: data)
         
         guard let content = response.choices.first?.message.content else {
             throw NSError(domain: "OpenAIError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No response content"])
@@ -317,7 +369,7 @@ class OpenAIService: ObservableObject {
         }
         
         do {
-            let result = try JSONDecoder().decode(PriceTagInfo.self, from: jsonData)
+            var result = try JSONDecoder().decode(PriceTagInfo.self, from: jsonData)
             
             // Track this interaction with actual token usage if available
             let inputTokens = response.usage?.prompt_tokens ?? (estimateTokens(prompt) + 765) // Add ~765 tokens for image if no usage data
@@ -332,9 +384,26 @@ class OpenAIService: ObservableObject {
                 estimatedCost: cost,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                itemName: result.name
+                itemName: result.name,
+                aiService: "OpenAI",
+                model: "gpt-4o-mini"
             )
             addToHistory(historyItem)
+            
+            // If tax rate is unknown but we have a valid product name, make a second call to detect tax
+            if result.taxRate == nil && result.name != "Unknown Item" && !result.name.isEmpty {
+                print("Tax rate unknown from image, making second call to detect tax for: \(result.name)")
+                if let detectedTaxRate = try await analyzeItemForTax(itemName: result.name, location: location) {
+                    // Create a new PriceTagInfo with the detected tax rate
+                    result = PriceTagInfo(
+                        name: result.name,
+                        price: result.price,
+                        taxRate: detectedTaxRate,
+                        taxDescription: location != nil ? "\(detectedTaxRate)% (Auto-detected)" : "\(detectedTaxRate)% (Default rate)",
+                        ingredients: result.ingredients
+                    )
+                }
+            }
             
             return result
         } catch {
@@ -391,7 +460,7 @@ class OpenAIService: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        let response = try JSONDecoder().decode(AIResponse.self, from: data)
         
         guard let content = response.choices.first?.message.content else {
             throw NSError(domain: "OpenAIError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No response content"])
@@ -436,7 +505,9 @@ class OpenAIService: ObservableObject {
                 estimatedCost: cost,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                itemName: productName
+                itemName: productName,
+                aiService: "OpenAI",
+                model: "gpt-4o-mini"
             )
             addToHistory(historyItem)
             
@@ -506,7 +577,7 @@ class OpenAIService: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        let response = try JSONDecoder().decode(AIResponse.self, from: data)
         
         guard let content = response.choices.first?.message.content else {
             throw NSError(domain: "OpenAIError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No response content"])
@@ -544,7 +615,9 @@ class OpenAIService: ObservableObject {
                 estimatedCost: cost,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                itemName: productName
+                itemName: productName,
+                aiService: "OpenAI",
+                model: "gpt-4o-mini"
             )
             addToHistory(historyItem)
             
@@ -560,7 +633,14 @@ class OpenAIService: ObservableObject {
     private func extractJSON(from content: String) -> String {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Find the JSON object boundaries
+        // First, try to extract JSON from markdown code blocks
+        if let jsonStart = trimmed.range(of: "```json"),
+           let jsonEnd = trimmed.range(of: "```", range: jsonStart.upperBound..<trimmed.endIndex) {
+            let jsonContent = String(trimmed[jsonStart.upperBound..<jsonEnd.lowerBound])
+            return jsonContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
+        // If no markdown blocks, find JSON object boundaries
         guard let startIndex = trimmed.firstIndex(of: "{"),
               let endIndex = trimmed.lastIndex(of: "}") else {
             return trimmed
@@ -588,6 +668,11 @@ class OpenAIService: ObservableObject {
                 self.totalTaxLookupCost += item.estimatedCost
                 UserDefaults.standard.set(self.totalTaxLookupCount, forKey: self.totalTaxLookupCountKey)
                 UserDefaults.standard.set(self.totalTaxLookupCost, forKey: self.totalTaxLookupCostKey)
+            } else if item.type.contains("Perplexity") {
+                self.totalPerplexitySearchCount += 1
+                self.totalPerplexitySearchCost += item.estimatedCost
+                UserDefaults.standard.set(self.totalPerplexitySearchCount, forKey: self.totalPerplexitySearchCountKey)
+                UserDefaults.standard.set(self.totalPerplexitySearchCost, forKey: self.totalPerplexitySearchCostKey)
             }
             
             UserDefaults.standard.set(self.totalSpentAllTime, forKey: self.totalSpentKey)
@@ -676,8 +761,10 @@ class OpenAIService: ObservableObject {
         totalPromptCount = 0
         totalImageAnalysisCount = 0
         totalTaxLookupCount = 0
+        totalPerplexitySearchCount = 0
         totalImageAnalysisCost = 0.0
         totalTaxLookupCost = 0.0
+        totalPerplexitySearchCost = 0.0
         spentBaseline = 0.0
         baselineSetDate = nil
         spentSinceBaselineAmount = 0.0
@@ -691,13 +778,25 @@ class OpenAIService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: totalCountKey)
         UserDefaults.standard.removeObject(forKey: totalImageAnalysisCountKey)
         UserDefaults.standard.removeObject(forKey: totalTaxLookupCountKey)
+        UserDefaults.standard.removeObject(forKey: totalPerplexitySearchCountKey)
         UserDefaults.standard.removeObject(forKey: totalImageAnalysisCostKey)
         UserDefaults.standard.removeObject(forKey: totalTaxLookupCostKey)
+        UserDefaults.standard.removeObject(forKey: totalPerplexitySearchCostKey)
         UserDefaults.standard.removeObject(forKey: spentBaselineKey)
         UserDefaults.standard.removeObject(forKey: baselineSetDateKey)
         UserDefaults.standard.removeObject(forKey: spentSinceBaselineKey)
         UserDefaults.standard.removeObject(forKey: historyKey)
         UserDefaults.standard.removeObject(forKey: manualSpentKey)
+    }
+    
+    func clearAPIKey() {
+        apiKey = ""
+        UserDefaults.standard.removeObject(forKey: apiKeyStorageKey)
+    }
+    
+    func clearPerplexityAPIKey() {
+        perplexityApiKey = ""
+        UserDefaults.standard.removeObject(forKey: perplexityApiKeyStorageKey)
     }
     
     func setTotalSpent(_ amount: Double) {
@@ -723,6 +822,11 @@ class OpenAIService: ObservableObject {
         return totalTaxLookupCost / Double(totalTaxLookupCount)
     }
     
+    var averagePerplexitySearchCost: Double {
+        guard totalPerplexitySearchCount > 0 else { return 0.005 } // Default estimate
+        return totalPerplexitySearchCost / Double(totalPerplexitySearchCount)
+    }
+    
     var estimatedScansRemaining: Int? {
         guard remainingCredits > 0 && totalImageAnalysisCount > 0 else { return nil }
         return Int(remainingCredits / averageImageAnalysisCost)
@@ -731,6 +835,11 @@ class OpenAIService: ObservableObject {
     var estimatedManualInteractionsRemaining: Int? {
         guard remainingCredits > 0 && totalTaxLookupCount > 0 else { return nil }
         return Int(remainingCredits / averageTaxLookupCost)
+    }
+    
+    var estimatedPerplexitySearchesRemaining: Int? {
+        guard remainingCredits > 0 && totalPerplexitySearchCount > 0 else { return nil }
+        return Int(remainingCredits / averagePerplexitySearchCost)
     }
     
     private func estimateTokens(_ text: String) -> Int {
@@ -775,5 +884,149 @@ class OpenAIService: ObservableObject {
         let outputCost = (Double(outputTokens) / 1000.0) * outputCostPer1K
         
         return inputCost + outputCost
+    }
+    
+    private func calculatePerplexityCost(inputTokens: Int, outputTokens: Int) -> Double {
+        // Perplexity Sonar Pro pricing (as of 2024)
+        let inputCostPer1K = 0.001    // $0.001 per 1K input tokens
+        let outputCostPer1K = 0.001   // $0.001 per 1K output tokens
+        
+        let inputCost = (Double(inputTokens) / 1000.0) * inputCostPer1K
+        let outputCost = (Double(outputTokens) / 1000.0) * outputCostPer1K
+        
+        return inputCost + outputCost
+    }
+    
+    func formatBillingCurrency(_ amount: Double) -> String {
+        let multiplier = pow(10.0, Double(billingDecimalPlaces))
+        let truncated = floor(amount * multiplier) / multiplier
+        return String(format: "%.\(billingDecimalPlaces)f", truncated)
+    }
+    
+    func guessPrice(itemName: String, location: String?, storeName: String? = nil, brand: String? = nil, additionalDetails: String?) async throws -> (price: Double?, sourceURL: String?) {
+        guard !perplexityApiKey.isEmpty else {
+            throw NSError(domain: "PerplexityError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Perplexity API key not configured."])
+        }
+        
+        print("🔍 Price Guess Debug (using Perplexity):")
+        print("  Item: \(itemName)")
+        print("  Store: \(storeName ?? "nil")")
+        print("  Brand: \(brand ?? "nil")")
+        print("  Details: \(additionalDetails ?? "nil")")
+        
+        // Build the search query
+        let brandText = brand?.isEmpty == false ? "\(brand!) " : ""
+        let storeText = storeName?.isEmpty == false ? " at \(storeName!)" : ""
+        let detailsText = additionalDetails?.isEmpty == false ? " (\(additionalDetails!))" : ""
+        
+        let searchPrompt = """
+        Find the current price of a \(brandText)\(itemName)\(detailsText)\(storeText) before taxes. Look for menu prices, online ordering prices, or delivery app prices.
+        
+        Please search thoroughly and provide:
+        1. The most current price you can find from official websites, menus, or delivery apps
+        2. The specific retailer/restaurant website where this price is found
+        3. The exact product URL if available
+        
+        For food items, check restaurant websites, delivery apps (DoorDash, Uber Eats), and food ordering platforms.
+        For retail items, check major retailers and their online stores.
+        
+        Return the information in JSON format with these exact fields:
+        {"estimatedPrice": 12.99, "sourceURL": "https://example.com/product-page", "retailer": "Store Name"}
+        
+        If you cannot find a specific price after thorough searching, use:
+        {"estimatedPrice": null, "sourceURL": null, "retailer": null}
+        """
+        
+        let payload: [String: Any] = [
+            "model": "llama-3.1-sonar-large-128k-online",
+            "messages": [
+                [
+                    "role": "user",
+                    "content": searchPrompt
+                ]
+            ],
+            "max_tokens": 300,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "return_citations": true
+        ]
+        
+        var request = URLRequest(url: URL(string: perplexityURL)!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(perplexityApiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        // Debug: Print raw response to understand structure
+        if let rawResponse = String(data: data, encoding: .utf8) {
+            print("🔍 Raw Perplexity API response: \(rawResponse)")
+        }
+        
+        let response = try JSONDecoder().decode(AIResponse.self, from: data)
+        
+        guard let content = response.choices.first?.message.content else {
+            throw NSError(domain: "PerplexityError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No response content"])
+        }
+        
+        print("📝 Perplexity response: \(content)")
+        
+        let cleanedContent = extractJSON(from: content)
+        
+        guard let jsonData = cleanedContent.data(using: .utf8) else {
+            throw NSError(domain: "PerplexityError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert response to data"])
+        }
+        
+        struct PerplexityPriceResponse: Codable {
+            let estimatedPrice: Double?
+            let sourceURL: String?
+            let retailer: String?
+        }
+        
+        do {
+            let priceResponse = try JSONDecoder().decode(PerplexityPriceResponse.self, from: jsonData)
+            
+            // Track this interaction with actual usage from Perplexity
+            let inputTokens = response.usage?.prompt_tokens ?? estimateTokens(searchPrompt)
+            let outputTokens = response.usage?.completion_tokens ?? estimateTokens(content)
+            let cost = calculatePerplexityCost(inputTokens: inputTokens, outputTokens: outputTokens)
+            
+            // Debug: Print actual vs estimated token usage
+            if let usage = response.usage {
+                print("💰 Perplexity - Actual tokens: input=\(usage.prompt_tokens), output=\(usage.completion_tokens), total=\(usage.total_tokens)")
+                let estimatedInput = estimateTokens(searchPrompt)
+                let estimatedOutput = estimateTokens(content)
+                print("💰 Perplexity - Estimated tokens: input=\(estimatedInput), output=\(estimatedOutput)")
+                print("💰 Perplexity - Actual cost: $\(String(format: "%.6f", cost))")
+            } else {
+                print("💰 Perplexity - No usage data returned, using estimates")
+                let estimatedInput = estimateTokens(searchPrompt)
+                let estimatedOutput = estimateTokens(content)
+                print("💰 Perplexity - Using estimates: input=\(estimatedInput), output=\(estimatedOutput), cost=$\(String(format: "%.6f", cost))")
+            }
+            
+            let historyItem = PromptHistoryItem(
+                timestamp: Date(),
+                type: "Price Guess",
+                prompt: searchPrompt,
+                response: content,
+                estimatedCost: cost,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                itemName: itemName,
+                aiService: "Perplexity",
+                model: "llama-3.1-sonar-large-128k-online"
+            )
+            addToHistory(historyItem)
+            
+            print("💰 Perplexity price result: \(priceResponse.estimatedPrice ?? 0.0) from \(priceResponse.retailer ?? "unknown") - \(priceResponse.sourceURL ?? "no URL")")
+            return (priceResponse.estimatedPrice, priceResponse.sourceURL)
+        } catch {
+            print("Perplexity price guess error: \(error)")
+            print("Raw content: \(content)")
+            print("Cleaned content: \(cleanedContent)")
+            return (nil, nil)
+        }
     }
 }

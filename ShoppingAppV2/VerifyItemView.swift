@@ -19,8 +19,18 @@ struct VerifyItemView: View {
     @State private var name: String
     @State private var costString: String
     @State private var taxRateString: String
+    @State private var hasUnknownTax: Bool
+    @State private var taxDescription: String?
     @State private var isAnalyzingAdditives = false
     @State private var isRetryingAnalysis = false
+    @State private var isForcingTaxCalculation = false
+    @State private var isGuessingPrice = false
+    @State private var showingPriceGuessAlert = false
+    @State private var priceGuessLocation = ""
+    @State private var priceGuessBrand = ""
+    @State private var priceGuessDetails = ""
+    @State private var priceSourceURL: String? = nil
+    @State private var showingUnableToDeterminePriceAlert = false
     @State private var retryCounter = 0
     @State private var riskyAdditives = 0
     @State private var nonRiskyAdditives = 0
@@ -37,6 +47,8 @@ struct VerifyItemView: View {
         self._name = State(initialValue: extractedInfo.name)
         self._costString = State(initialValue: String(format: "%.2f", extractedInfo.price))
         self._taxRateString = State(initialValue: String(format: "%.2f", extractedInfo.taxRate ?? 0.0))
+        self._hasUnknownTax = State(initialValue: extractedInfo.taxDescription == "Unknown Taxes" || extractedInfo.taxRate == nil)
+        self._taxDescription = State(initialValue: extractedInfo.taxDescription)
     }
     
     var body: some View {
@@ -57,12 +69,12 @@ struct VerifyItemView: View {
                         Text("% Tax")
                     }
                     
-                    if let taxDescription = extractedInfo.taxDescription {
+                    if let taxDesc = taxDescription {
                         HStack {
                             Text("Tax Info:")
                                 .foregroundColor(.secondary)
                             Spacer()
-                            Text(taxDescription)
+                            Text(taxDesc)
                                 .foregroundColor(.secondary)
                                 .font(.caption)
                         }
@@ -129,6 +141,50 @@ struct VerifyItemView: View {
                         }
                     }
                     
+                    // Force Tax Calculation button - shows when tax is unknown
+                    if hasUnknownTax {
+                        if isForcingTaxCalculation {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Calculating tax...")
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            Button("Force Tax Calculation") {
+                                Task { @MainActor in
+                                    await forceTaxCalculation()
+                                }
+                            }
+                            .foregroundColor(.green)
+                            .disabled(isForcingTaxCalculation || name.isEmpty)
+                        }
+                    }
+                    
+                    // Guess Price button
+                    if isGuessingPrice {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Guessing price...")
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Button("Guess Price") {
+                            setupPriceGuess()
+                        }
+                        .foregroundColor(.purple)
+                        .disabled(name.isEmpty || isGuessingPrice)
+                        
+                        if priceSourceURL != nil {
+                            Button("Click here to see price source") {
+                                openPriceSource()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        }
+                    }
+                    
                     if let onRetakePhoto = onRetakePhoto {
                         Button("Retry & Take New Photo") {
                             onRetakePhoto()
@@ -170,7 +226,6 @@ struct VerifyItemView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Add Item") {
-                        let hasUnknownTax = extractedInfo.taxDescription == "Unknown Taxes" || extractedInfo.taxRate == nil
                         let item = ShoppingItem(
                             name: name.isEmpty ? "Unnamed Item" : name,
                             cost: Double(costString) ?? 0,
@@ -189,6 +244,22 @@ struct VerifyItemView: View {
                 if settingsStore.healthTrackingEnabled {
                     analyzeAdditives()
                 }
+            }
+            .alert("Guess Price", isPresented: $showingPriceGuessAlert) {
+                TextField("Store name (e.g., Walmart, Target)", text: $priceGuessLocation)
+                TextField("Brand (e.g., Nike, Apple)", text: $priceGuessBrand)
+                TextField("Item details/specifics", text: $priceGuessDetails)
+                Button("Cancel", role: .cancel) { }
+                Button("Guess") {
+                    performPriceGuess()
+                }
+            } message: {
+                Text("Help AI estimate the price for \"\(name)\" by providing optional details. All fields are optional.")
+            }
+            .alert("Unable to Determine Price", isPresented: $showingUnableToDeterminePriceAlert) {
+                Button("OK") { }
+            } message: {
+                Text("Sorry, we couldn't determine a price for this item. Please try entering a more specific item name or additional details.")
             }
         }
     }
@@ -251,10 +322,94 @@ struct VerifyItemView: View {
             self.name = newInfo.name
             self.costString = String(format: "%.2f", newInfo.price)
             self.taxRateString = String(format: "%.2f", newInfo.taxRate ?? 0.0)
+            self.hasUnknownTax = newInfo.taxDescription == "Unknown Taxes" || newInfo.taxRate == nil
+            self.taxDescription = newInfo.taxDescription
             self.isRetryingAnalysis = false
+            
+            // Re-analyze additives with the new name if health tracking is enabled
+            if settingsStore.healthTrackingEnabled && name != extractedInfo.name {
+                analyzeAdditives()
+            }
         } catch {
             self.isRetryingAnalysis = false
             print("Error retrying analysis: \(error)")
         }
+    }
+    
+    @MainActor
+    private func forceTaxCalculation() async {
+        guard !name.isEmpty else { return }
+        
+        isForcingTaxCalculation = true
+        
+        do {
+            // Call the tax analysis with the current name and location
+            if let detectedTaxRate = try await openAIService.analyzeItemForTax(itemName: name, location: locationString) {
+                self.taxRateString = String(format: "%.2f", detectedTaxRate)
+                self.hasUnknownTax = false
+                self.taxDescription = locationString != nil ? "\(detectedTaxRate)% (Auto-detected)" : "\(detectedTaxRate)% (Default rate)"
+            } else {
+                // Tax rate still couldn't be determined
+                self.hasUnknownTax = true
+                self.taxDescription = "Unknown Taxes"
+            }
+            
+            isForcingTaxCalculation = false
+        } catch {
+            isForcingTaxCalculation = false
+            print("Error forcing tax calculation: \(error)")
+        }
+    }
+    
+    private func setupPriceGuess() {
+        // Clear all fields - user will enter them
+        priceGuessLocation = ""
+        priceGuessBrand = ""
+        priceGuessDetails = ""
+        priceSourceURL = nil
+        showingPriceGuessAlert = true
+    }
+    
+    private func performPriceGuess() {
+        guard !name.isEmpty else { return }
+        
+        isGuessingPrice = true
+        
+        Task {
+            do {
+                let storeName = priceGuessLocation.isEmpty ? nil : priceGuessLocation
+                let brand = priceGuessBrand.isEmpty ? nil : priceGuessBrand
+                let details = priceGuessDetails.isEmpty ? nil : priceGuessDetails
+                
+                let result = try await openAIService.guessPrice(
+                    itemName: name,
+                    location: locationString,
+                    storeName: storeName,
+                    brand: brand,
+                    additionalDetails: details
+                )
+                
+                DispatchQueue.main.async {
+                    if let estimatedPrice = result.price {
+                        self.costString = String(format: "%.2f", estimatedPrice)
+                        self.priceSourceURL = result.sourceURL
+                    } else {
+                        self.showingUnableToDeterminePriceAlert = true
+                    }
+                    self.isGuessingPrice = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isGuessingPrice = false
+                    print("Error guessing price: \(error)")
+                }
+            }
+        }
+    }
+    
+    private func openPriceSource() {
+        guard let urlString = priceSourceURL,
+              let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
     }
 }

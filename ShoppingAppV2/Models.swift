@@ -198,10 +198,24 @@ struct AdditiveInfo: Identifiable, Codable {
     }
 }
 
+// Legacy struct for migration
+struct LegacyShoppingItem: Codable {
+    let id: UUID
+    var name: String
+    var cost: Double
+    var taxRate: Double
+    var hasUnknownTax: Bool
+    var riskyAdditives: Int
+    var nonRiskyAdditives: Int
+    var additiveDetails: [AdditiveInfo]
+    let dateAdded: Date
+}
+
 struct ShoppingItem: Identifiable, Codable {
     let id: UUID
     var name: String
     var cost: Double
+    var quantity: Int
     var taxRate: Double
     var hasUnknownTax: Bool = false
     var riskyAdditives: Int = 0
@@ -209,10 +223,11 @@ struct ShoppingItem: Identifiable, Codable {
     var additiveDetails: [AdditiveInfo] = []
     let dateAdded: Date
     
-    init(name: String, cost: Double, taxRate: Double, hasUnknownTax: Bool = false, riskyAdditives: Int = 0, nonRiskyAdditives: Int = 0, additiveDetails: [AdditiveInfo] = []) {
+    init(name: String, cost: Double, quantity: Int = 1, taxRate: Double, hasUnknownTax: Bool = false, riskyAdditives: Int = 0, nonRiskyAdditives: Int = 0, additiveDetails: [AdditiveInfo] = []) {
         self.id = UUID()
         self.name = name
         self.cost = cost
+        self.quantity = quantity
         self.taxRate = taxRate
         self.hasUnknownTax = hasUnknownTax
         self.riskyAdditives = riskyAdditives
@@ -220,11 +235,17 @@ struct ShoppingItem: Identifiable, Codable {
         self.additiveDetails = additiveDetails
         self.dateAdded = Date()
     }
+    var unitCost: Double {
+        return cost
+    }
+    var subtotal: Double {
+        return cost * Double(quantity)
+    }
     var taxAmount: Double {
-        return cost * (taxRate / 100)
+        return subtotal * (taxRate / 100)
     }
     var totalCost: Double {
-        return cost + taxAmount
+        return subtotal + taxAmount
     }
 }
 
@@ -284,7 +305,7 @@ class ShoppingListStore: ObservableObject {
     }
     
     var subtotal: Double {
-        items.reduce(0) { $0 + $1.cost }
+        items.reduce(0) { $0 + $1.subtotal }
     }
     
     var totalTax: Double {
@@ -318,9 +339,29 @@ class ShoppingListStore: ObservableObject {
     }
     
     private func loadItems() {
-        if let data = UserDefaults.standard.data(forKey: itemsKey),
-           let decoded = try? JSONDecoder().decode([ShoppingItem].self, from: data) {
-            items = decoded.sorted(by: { $0.dateAdded > $1.dateAdded }) // Sort newest first
+        if let data = UserDefaults.standard.data(forKey: itemsKey) {
+            // Try to decode with new structure first
+            if let decoded = try? JSONDecoder().decode([ShoppingItem].self, from: data) {
+                items = decoded.sorted(by: { $0.dateAdded > $1.dateAdded }) // Sort newest first
+            } else {
+                // If that fails, try legacy structure and migrate
+                if let legacyItems = try? JSONDecoder().decode([LegacyShoppingItem].self, from: data) {
+                    items = legacyItems.map { legacy in
+                        ShoppingItem(
+                            name: legacy.name,
+                            cost: legacy.cost,
+                            quantity: 1, // Default quantity for legacy items
+                            taxRate: legacy.taxRate,
+                            hasUnknownTax: legacy.hasUnknownTax,
+                            riskyAdditives: legacy.riskyAdditives,
+                            nonRiskyAdditives: legacy.nonRiskyAdditives,
+                            additiveDetails: legacy.additiveDetails
+                        )
+                    }.sorted(by: { $0.dateAdded > $1.dateAdded })
+                    // Save in new format
+                    saveItems()
+                }
+            }
         }
     }
 }

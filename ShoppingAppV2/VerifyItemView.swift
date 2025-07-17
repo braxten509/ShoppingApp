@@ -10,7 +10,7 @@ struct VerifyItemView: View {
     let extractedInfo: PriceTagInfo
     @ObservedObject var store: ShoppingListStore
     @ObservedObject var settingsStore: SettingsStore
-    @ObservedObject var openAIService: OpenAIService
+    @ObservedObject var aiService: AIService
     @Environment(\.presentationMode) var presentationMode
     let onRetakePhoto: (() -> Void)?
     let originalImage: UIImage?
@@ -36,11 +36,11 @@ struct VerifyItemView: View {
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
     
-    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, openAIService: OpenAIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil) {
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, settingsStore: SettingsStore, aiService: AIService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil) {
         self.extractedInfo = extractedInfo
         self.store = store
         self.settingsStore = settingsStore
-        self.openAIService = openAIService
+        self.aiService = aiService
         self.onRetakePhoto = onRetakePhoto
         self.originalImage = originalImage
         self.locationString = locationString
@@ -280,7 +280,7 @@ struct VerifyItemView: View {
             
             Task {
                 do {
-                    if let result = try await openAIService.analyzeProductForAdditiveCounts(productName: name) {
+                    if let result = try await aiService.analyzeProductForAdditives(productName: name) {
                         DispatchQueue.main.async {
                             self.riskyAdditives = result.risky
                             self.nonRiskyAdditives = result.safe
@@ -288,20 +288,8 @@ struct VerifyItemView: View {
                             self.isAnalyzingAdditives = false
                         }
                     } else {
-                        // Fallback to ingredient-based analysis
-                        if let ingredients = try await openAIService.analyzeProductForAdditives(productName: name) {
-                            let analysis = FoodAdditives.analyzeAdditives(in: ingredients)
-                            let details = FoodAdditives.createAdditiveDetails(riskyFound: analysis.riskyFound, nonRiskyFound: analysis.nonRiskyFound)
-                            DispatchQueue.main.async {
-                                self.riskyAdditives = analysis.risky
-                                self.nonRiskyAdditives = analysis.nonRisky
-                                self.additiveDetails = details
-                                self.isAnalyzingAdditives = false
-                            }
-                        } else {
-                            DispatchQueue.main.async {
-                                self.isAnalyzingAdditives = false
-                            }
+                        DispatchQueue.main.async {
+                            self.isAnalyzingAdditives = false
                         }
                     }
                 } catch {
@@ -317,7 +305,7 @@ struct VerifyItemView: View {
     @MainActor
     private func retryAnalysis(with image: UIImage) async {
         do {
-            let newInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)
+            let newInfo = try await aiService.analyzePriceTag(image: image, location: locationString)
             
             self.name = newInfo.name
             self.costString = String(format: "%.2f", newInfo.price)
@@ -344,7 +332,7 @@ struct VerifyItemView: View {
         
         do {
             // Call the tax analysis with the current name and location
-            if let detectedTaxRate = try await openAIService.analyzeItemForTax(itemName: name, location: locationString) {
+            if let detectedTaxRate = try await aiService.analyzeItemForTax(itemName: name, location: locationString) {
                 self.taxRateString = String(format: "%.2f", detectedTaxRate)
                 self.hasUnknownTax = false
                 self.taxDescription = locationString != nil ? "\(detectedTaxRate)% (Auto-detected)" : "\(detectedTaxRate)% (Default rate)"
@@ -381,7 +369,7 @@ struct VerifyItemView: View {
                 let brand = priceGuessBrand.isEmpty ? nil : priceGuessBrand
                 let details = priceGuessDetails.isEmpty ? nil : priceGuessDetails
                 
-                let result = try await openAIService.guessPrice(
+                let result = try await aiService.guessPrice(
                     itemName: name,
                     location: locationString,
                     storeName: storeName,

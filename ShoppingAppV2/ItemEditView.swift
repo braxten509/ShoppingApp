@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ItemEditView: View {
     @Binding var item: ShoppingItem
-    @ObservedObject var openAIService: OpenAIService
+    @ObservedObject var aiService: AIService
     @ObservedObject var locationManager: LocationManager
     @Environment(\.presentationMode) var presentationMode
     
@@ -21,9 +21,9 @@ struct ItemEditView: View {
     @State private var showingUnableToDeterminePriceAlert = false
     @State private var hasUnknownTax: Bool
     
-    init(item: Binding<ShoppingItem>, openAIService: OpenAIService, locationManager: LocationManager) {
+    init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager) {
         self._item = item
-        self.openAIService = openAIService
+        self.aiService = aiService
         self.locationManager = locationManager
         self._name = State(initialValue: item.wrappedValue.name)
         self._costString = State(initialValue: String(format: "%.2f", item.wrappedValue.cost))
@@ -253,7 +253,7 @@ struct ItemEditView: View {
         
         do {
             // Call the tax analysis with the current name and location
-            if let detectedTaxRate = try await openAIService.analyzeItemForTax(itemName: name, location: locationString) {
+            if let detectedTaxRate = try await aiService.analyzeItemForTax(itemName: name, location: locationString) {
                 self.taxRateString = String(format: "%.2f", detectedTaxRate)
                 self.hasUnknownTax = false
             } else {
@@ -307,7 +307,7 @@ struct ItemEditView: View {
                 let brand = priceGuessBrand.isEmpty ? nil : priceGuessBrand
                 let details = priceGuessDetails.isEmpty ? nil : priceGuessDetails
                 
-                let result = try await openAIService.guessPrice(
+                let result = try await aiService.guessPrice(
                     itemName: name,
                     location: actualLocationString,
                     storeName: storeName,

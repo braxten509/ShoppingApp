@@ -12,6 +12,13 @@ struct ContentView: View {
     @StateObject private var locationManager = LocationManager()
     @StateObject private var openAIService = OpenAIService()
     @StateObject private var settingsStore = SettingsStore()
+    @StateObject private var settingsService = SettingsService()
+    @StateObject private var billingService = BillingService()
+    @StateObject private var historyService = HistoryService()
+    
+    private var aiService: AIService {
+        AIService(settingsService: settingsService, billingService: billingService, historyService: historyService)
+    }
     
     @State private var showingCamera = false
     @State private var showingAddItem = false
@@ -80,12 +87,12 @@ struct ContentView: View {
                 CameraView(selectedImage: $selectedImage)
             }
             .sheet(isPresented: $showingAddItem) {
-                AddItemView(store: store, locationManager: locationManager, openAIService: openAIService, settingsStore: settingsStore)
+                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsStore: settingsStore)
             }
             .sheet(item: $editingItem) { item in
                 ItemEditView(
                     item: bindingForItem(item),
-                    openAIService: openAIService,
+                    aiService: aiService,
                     locationManager: locationManager
                 )
             }
@@ -95,7 +102,7 @@ struct ContentView: View {
                         extractedInfo: info, 
                         store: store, 
                         settingsStore: settingsStore, 
-                        openAIService: openAIService,
+                        aiService: aiService,
                         onRetakePhoto: {
                             // Retake photo callback
                             showingVerifyItem = false
@@ -109,7 +116,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(openAIService: openAIService, settingsStore: settingsStore, store: store)
+                SettingsView(openAIService: openAIService, settingsStore: settingsStore, settingsService: settingsService, store: store, historyService: historyService)
             }
             .sheet(isPresented: $showingAdditiveDetail) {
                 if let item = selectedItemForAdditives {
@@ -405,7 +412,7 @@ struct ContentView: View {
         
         Task {
             do {
-                let priceTagInfo = try await openAIService.analyzePriceTag(image: image, location: locationString)
+                let priceTagInfo = try await aiService.analyzePriceTag(image: image, location: locationString)
                 
                 DispatchQueue.main.async {
                     self.extractedInfo = priceTagInfo

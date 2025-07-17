@@ -3,7 +3,7 @@ import SwiftUI
 struct AddItemView: View {
     @ObservedObject var store: ShoppingListStore
     @ObservedObject var locationManager: LocationManager
-    @ObservedObject var openAIService: OpenAIService
+    @ObservedObject var aiService: AIService
     @ObservedObject var settingsStore: SettingsStore
     @Environment(\.presentationMode) var presentationMode
     
@@ -260,7 +260,7 @@ struct AddItemView: View {
         
         Task {
             do {
-                let detectedTaxRate = try await openAIService.analyzeItemForTax(itemName: name, location: locationString)
+                let detectedTaxRate = try await aiService.analyzeItemForTax(itemName: name, location: locationString)
                 
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
@@ -300,7 +300,7 @@ struct AddItemView: View {
         
         Task {
             do {
-                if let result = try await openAIService.analyzeProductForAdditiveCounts(productName: name) {
+                if let result = try await aiService.analyzeProductForAdditives(productName: name) {
                     DispatchQueue.main.async {
                         self.riskyAdditives = result.risky
                         self.nonRiskyAdditives = result.safe
@@ -308,20 +308,8 @@ struct AddItemView: View {
                         self.isAnalyzingAdditives = false
                     }
                 } else {
-                    // Fallback to ingredient-based analysis
-                    if let ingredients = try await openAIService.analyzeProductForAdditives(productName: name) {
-                        let analysis = FoodAdditives.analyzeAdditives(in: ingredients)
-                        let details = FoodAdditives.createAdditiveDetails(riskyFound: analysis.riskyFound, nonRiskyFound: analysis.nonRiskyFound)
-                        DispatchQueue.main.async {
-                            self.riskyAdditives = analysis.risky
-                            self.nonRiskyAdditives = analysis.nonRisky
-                            self.additiveDetails = details
-                            self.isAnalyzingAdditives = false
-                        }
-                    } else {
-                        DispatchQueue.main.async {
-                            self.isAnalyzingAdditives = false
-                        }
+                    DispatchQueue.main.async {
+                        self.isAnalyzingAdditives = false
                     }
                 }
             } catch {
@@ -373,7 +361,7 @@ struct AddItemView: View {
                 let brand = priceGuessBrand.isEmpty ? nil : priceGuessBrand
                 let details = priceGuessDetails.isEmpty ? nil : priceGuessDetails
                 
-                let result = try await openAIService.guessPrice(
+                let result = try await aiService.guessPrice(
                     itemName: name,
                     location: actualLocationString,
                     storeName: storeName,

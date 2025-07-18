@@ -71,15 +71,42 @@ class SettingsService: ObservableObject {
         self.openAIAPIKey = UserDefaults.standard.string(forKey: "openAIAPIKey") ?? ""
         self.perplexityAPIKey = UserDefaults.standard.string(forKey: "perplexityAPIKey") ?? ""
         self.useManualTaxRate = UserDefaults.standard.bool(forKey: "useManualTaxRate")
-        self.manualTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
+        // Set a reasonable default tax rate if none exists (6% is a common US average)
+        let storedTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
+        self.manualTaxRate = storedTaxRate > 0 ? storedTaxRate : 6.0
     }
     
     
     func getTaxRatePrompt(itemName: String, location: String?) -> String {
         if let location = location {
-            return "What is the sales tax rate for \(itemName) in \(location)? Respond with ONLY a JSON object: {\"taxRate\": <number>} where <number> is the tax percentage (e.g., 6.0 for 6%)."
+            return """
+            What is the current sales tax rate for purchasing \(itemName) in \(location)? 
+            
+            Consider:
+            - State sales tax
+            - Local sales tax
+            - Combined total rate
+            - Any special categories for this item type
+            
+            Respond with ONLY a JSON object in this exact format:
+            {"taxRate": X.X}
+            
+            Where X.X is the total combined tax percentage as a decimal number (e.g., 6.0 for 6%, 8.25 for 8.25%).
+            Do not include any other text, explanations, or formatting.
+            """
         } else {
-            return "What is the sales tax rate for \(itemName)? Respond with ONLY a JSON object: {\"taxRate\": <number>} where <number> is the tax percentage (e.g., 6.0 for 6%)."
+            return """
+            What is the typical sales tax rate for purchasing \(itemName) in the United States?
+            
+            Provide the most common sales tax rate range for this type of item.
+            If uncertain, use a reasonable estimate based on average US sales tax rates (typically 6-8%).
+            
+            Respond with ONLY a JSON object in this exact format:
+            {"taxRate": X.X}
+            
+            Where X.X is the tax percentage as a decimal number (e.g., 6.0 for 6%, 7.5 for 7.5%).
+            Do not include any other text, explanations, or formatting.
+            """
         }
     }
     

@@ -38,6 +38,10 @@ struct VerifyItemView: View {
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
     @State private var dynamicAnalysisIssues: [String] = []
+    @State private var isPriceByMeasurement = false
+    @State private var measurementQuantity = 1.0
+    @State private var measurementQuantityString = "1.0"
+    @State private var selectedMeasurementUnit = MeasurementUnit.units
     
     
     enum TaxMode: String, CaseIterable {
@@ -91,6 +95,38 @@ struct VerifyItemView: View {
                         .disabled(isDetectingTax)
                         
                         taxModeView
+                    }
+                }
+                
+                Section(header: Text("Price by Measurement")) {
+                    Toggle("Price by Measurement", isOn: $isPriceByMeasurement)
+                    
+                    if isPriceByMeasurement {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Base price is per unit of measurement")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            HStack {
+                                TextField("Quantity", text: $measurementQuantityString)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(width: 80)
+                                
+                                Picker("Unit", selection: $selectedMeasurementUnit) {
+                                    ForEach(MeasurementUnit.allCases, id: \.self) { unit in
+                                        Text(unit.displayName).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                            }
+                            
+                            if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
+                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.rawValue))")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                        }
                     }
                 }
                 
@@ -288,6 +324,9 @@ struct VerifyItemView: View {
                     }
                 }
             }
+            .onChange(of: measurementQuantityString) { _, newValue in
+                measurementQuantity = Double(newValue) ?? 1.0
+            }
         }
     }
     
@@ -316,9 +355,11 @@ struct VerifyItemView: View {
             if settingsService.useManualTaxRate {
                 return settingsService.manualTaxRate
             } else {
+                // If AI detection failed, return 0 and mark as unknown tax
                 return detectedTaxRate ?? 0.0
             }
         case .ai:
+            // If AI detection failed, return 0 and mark as unknown tax
             return detectedTaxRate ?? 0.0
         case .customValue:
             return Double(customTaxRateString) ?? 0.0
@@ -371,11 +412,20 @@ struct VerifyItemView: View {
             }
         }()
         
+        // Update measurement quantity from string
+        measurementQuantity = Double(measurementQuantityString) ?? 1.0
+        
         let item = ShoppingItem(
             name: name.isEmpty ? "Unnamed Item" : name,
             cost: Double(costString) ?? 0,
             taxRate: finalTaxRate,
-            hasUnknownTax: hasUnknownTax
+            hasUnknownTax: hasUnknownTax,
+            riskyAdditives: riskyAdditives,
+            nonRiskyAdditives: nonRiskyAdditives,
+            additiveDetails: additiveDetails,
+            isPriceByMeasurement: isPriceByMeasurement,
+            measurementQuantity: measurementQuantity,
+            measurementUnit: selectedMeasurementUnit.rawValue
         )
         store.addItem(item)
         presentationMode.wrappedValue.dismiss()

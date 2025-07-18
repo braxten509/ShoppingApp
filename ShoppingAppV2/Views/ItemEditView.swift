@@ -23,6 +23,10 @@ struct ItemEditView: View {
     @State private var showingPriceErrorAlert = false
     @State private var currentErrorMessage = ""
     @State private var hasUnknownTax: Bool
+    @State private var isPriceByMeasurement: Bool
+    @State private var measurementQuantity: Double
+    @State private var measurementQuantityString: String
+    @State private var selectedMeasurementUnit: MeasurementUnit
     
     init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager) {
         self._item = item
@@ -33,6 +37,10 @@ struct ItemEditView: View {
         self._quantityString = State(initialValue: String(item.wrappedValue.quantity))
         self._taxRateString = State(initialValue: String(format: "%.2f", item.wrappedValue.taxRate))
         self._hasUnknownTax = State(initialValue: item.wrappedValue.hasUnknownTax)
+        self._isPriceByMeasurement = State(initialValue: item.wrappedValue.isPriceByMeasurement)
+        self._measurementQuantity = State(initialValue: item.wrappedValue.measurementQuantity)
+        self._measurementQuantityString = State(initialValue: String(format: "%.1f", item.wrappedValue.measurementQuantity))
+        self._selectedMeasurementUnit = State(initialValue: MeasurementUnit(rawValue: item.wrappedValue.measurementUnit) ?? .units)
     }
     
     var body: some View {
@@ -66,6 +74,38 @@ struct ItemEditView: View {
                             Text("(Unknown)")
                                 .font(.caption)
                                 .foregroundColor(.orange)
+                        }
+                    }
+                }
+                
+                Section(header: Text("Price by Measurement")) {
+                    Toggle("Price by Measurement", isOn: $isPriceByMeasurement)
+                    
+                    if isPriceByMeasurement {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Base price is per unit of measurement")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            HStack {
+                                TextField("Quantity", text: $measurementQuantityString)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(width: 80)
+                                
+                                Picker("Unit", selection: $selectedMeasurementUnit) {
+                                    ForEach(MeasurementUnit.allCases, id: \.self) { unit in
+                                        Text(unit.displayName).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                            }
+                            
+                            if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
+                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.rawValue))")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
                         }
                     }
                 }
@@ -194,6 +234,9 @@ struct ItemEditView: View {
                         item.quantity = max(1, Int(quantityString) ?? 1)
                         item.taxRate = Double(taxRateString) ?? 0
                         item.hasUnknownTax = hasUnknownTax
+                        item.isPriceByMeasurement = isPriceByMeasurement
+                        item.measurementQuantity = Double(measurementQuantityString) ?? 1.0
+                        item.measurementUnit = selectedMeasurementUnit.rawValue
                         presentationMode.wrappedValue.dismiss()
                     }
                 }
@@ -274,6 +317,9 @@ struct ItemEditView: View {
                         webViewSelectedItemName = nil
                     }
                 }
+            }
+            .onChange(of: measurementQuantityString) { _, newValue in
+                measurementQuantity = Double(newValue) ?? 1.0
             }
             .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
                 Button("OK") { }

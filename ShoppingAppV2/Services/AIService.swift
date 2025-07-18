@@ -19,7 +19,7 @@ class AIService: ObservableObject {
     }
     
 
-    func analyzeItemForTax(itemName: String, location: String? = nil) async throws -> Double? {
+    func analyzeItemForTax(itemName: String, location: String? = nil, retryCount: Int = 0) async throws -> Double? {
         // Check if manual tax rate is enabled
         if settingsService.useManualTaxRate {
             return settingsService.manualTaxRate
@@ -54,11 +54,15 @@ class AIService: ObservableObject {
             // Fallback: try to extract tax rate from text
             print("JSON parsing failed, attempting to extract tax rate from text: \(content)")
             
-            // Look for patterns like "6.0%", "6%", "tax rate is 6.0", etc.
+            // Look for patterns like "6.0%", "6%", "tax rate is 6.0", "taxRate": 6.0, etc.
             let patterns = [
                 #"(?:sales tax rate|tax rate|combined.*?rate).*?(?:is )?(\d+(?:\.\d+)?)%"#,
                 #"(\d+(?:\.\d+)?)%.*?(?:sales tax|tax rate)"#,
-                #"\{[^}]*"taxRate"[^}]*?(\d+(?:\.\d+)?)[^}]*\}"#
+                #"\"?taxRate\"?\s*:\s*(\d+(?:\.\d+)?)"#,
+                #"\{[^}]*\"?taxRate\"?[^}]*?(\d+(?:\.\d+)?)[^}]*\}"#,
+                #"(\d+(?:\.\d+)?)%"#,
+                #"(\d+(?:\.\d+)?)\s*percent"#,
+                #"rate.*?(\d+(?:\.\d+)?)"#
             ]
             
             var extractedRate: Double?
@@ -95,11 +99,20 @@ class AIService: ObservableObject {
         ))
         billingService.addCost(amount: 0.001)
         
-        // If tax rate is nil, throw a descriptive error using AI's explanation
+        // If tax rate is nil, try retry logic then throw descriptive error
         if let response = taxResponse, let rate = response.taxRate {
             return rate
         } else {
-            let errorMessage = taxResponse?.explanation ?? "Unable to determine tax rate for '\(itemName)'"
+            // Retry logic - try up to 4 more times with improved prompts
+            if retryCount < 4 {
+                print("Tax detection failed, retrying (\(retryCount + 1)/4)...")
+                try await Task.sleep(nanoseconds: 1_000_000_000) // Wait 1 second
+                return try await analyzeItemForTax(itemName: itemName, location: location, retryCount: retryCount + 1)
+            }
+            
+            // If all retries failed, throw error so UI can mark as "Unknown tax"
+            print("Tax detection failed after \(retryCount + 1) attempts")
+            let errorMessage = taxResponse?.explanation ?? "Unable to determine tax rate for '\(itemName)' after \(retryCount + 1) attempts"
             throw NSError(domain: "TaxAnalysisError", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: errorMessage
             ])

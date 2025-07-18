@@ -223,7 +223,12 @@ struct ShoppingItem: Identifiable, Codable {
     var additiveDetails: [AdditiveInfo] = []
     let dateAdded: Date
     
-    init(name: String, cost: Double, quantity: Int = 1, taxRate: Double, hasUnknownTax: Bool = false, riskyAdditives: Int = 0, nonRiskyAdditives: Int = 0, additiveDetails: [AdditiveInfo] = []) {
+    // Price by measurement fields
+    var isPriceByMeasurement: Bool = false
+    var measurementQuantity: Double = 1.0
+    var measurementUnit: String = "units"
+    
+    init(name: String, cost: Double, quantity: Int = 1, taxRate: Double, hasUnknownTax: Bool = false, riskyAdditives: Int = 0, nonRiskyAdditives: Int = 0, additiveDetails: [AdditiveInfo] = [], isPriceByMeasurement: Bool = false, measurementQuantity: Double = 1.0, measurementUnit: String = "units") {
         self.id = UUID()
         self.name = name
         self.cost = cost
@@ -233,19 +238,135 @@ struct ShoppingItem: Identifiable, Codable {
         self.riskyAdditives = riskyAdditives
         self.nonRiskyAdditives = nonRiskyAdditives
         self.additiveDetails = additiveDetails
+        self.isPriceByMeasurement = isPriceByMeasurement
+        self.measurementQuantity = measurementQuantity
+        self.measurementUnit = measurementUnit
         self.dateAdded = Date()
     }
     var unitCost: Double {
         return cost
     }
     var subtotal: Double {
-        return cost * Double(quantity)
+        return actualCost * Double(quantity)
     }
     var taxAmount: Double {
         return subtotal * (taxRate / 100)
     }
     var totalCost: Double {
         return subtotal + taxAmount
+    }
+    
+    var actualCost: Double {
+        if isPriceByMeasurement {
+            return cost * measurementQuantity
+        }
+        return cost
+    }
+}
+
+enum MeasurementUnit: String, CaseIterable {
+    // Weight
+    case pounds = "lbs"
+    case ounces = "oz"
+    case grams = "g"
+    case kilograms = "kg"
+    case tons = "tons"
+    
+    // Volume
+    case fluidOunces = "fl oz"
+    case cups = "cups"
+    case pints = "pints"
+    case quarts = "quarts"
+    case gallons = "gal"
+    case milliliters = "ml"
+    case liters = "L"
+    
+    // Length
+    case inches = "in"
+    case feet = "ft"
+    case yards = "yd"
+    case meters = "m"
+    case centimeters = "cm"
+    case millimeters = "mm"
+    
+    // Area
+    case squareFeet = "sq ft"
+    case squareMeters = "sq m"
+    case squareInches = "sq in"
+    
+    // Count
+    case pieces = "pieces"
+    case dozen = "dozen"
+    case units = "units"
+    case each = "each"
+    case pairs = "pairs"
+    case packs = "packs"
+    case boxes = "boxes"
+    case bags = "bags"
+    case bottles = "bottles"
+    case cans = "cans"
+    
+    var displayName: String {
+        switch self {
+        case .pounds: return "Pounds (lbs)"
+        case .ounces: return "Ounces (oz)"
+        case .grams: return "Grams (g)"
+        case .kilograms: return "Kilograms (kg)"
+        case .tons: return "Tons"
+        case .fluidOunces: return "Fluid Ounces (fl oz)"
+        case .cups: return "Cups"
+        case .pints: return "Pints"
+        case .quarts: return "Quarts"
+        case .gallons: return "Gallons (gal)"
+        case .milliliters: return "Milliliters (ml)"
+        case .liters: return "Liters (L)"
+        case .inches: return "Inches (in)"
+        case .feet: return "Feet (ft)"
+        case .yards: return "Yards (yd)"
+        case .meters: return "Meters (m)"
+        case .centimeters: return "Centimeters (cm)"
+        case .millimeters: return "Millimeters (mm)"
+        case .squareFeet: return "Square Feet (sq ft)"
+        case .squareMeters: return "Square Meters (sq m)"
+        case .squareInches: return "Square Inches (sq in)"
+        case .pieces: return "Pieces"
+        case .dozen: return "Dozen"
+        case .units: return "Units"
+        case .each: return "Each"
+        case .pairs: return "Pairs"
+        case .packs: return "Packs"
+        case .boxes: return "Boxes"
+        case .bags: return "Bags"
+        case .bottles: return "Bottles"
+        case .cans: return "Cans"
+        }
+    }
+}
+
+struct CompletedShoppingTrip: Identifiable, Codable {
+    let id: UUID
+    let items: [ShoppingItem]
+    let subtotal: Double
+    let totalTax: Double
+    let grandTotal: Double
+    let completedDate: Date
+    
+    init(items: [ShoppingItem]) {
+        self.id = UUID()
+        self.items = items
+        self.subtotal = items.reduce(0) { $0 + $1.subtotal }
+        self.totalTax = items.reduce(0) { $0 + $1.taxAmount }
+        self.grandTotal = items.reduce(0) { $0 + $1.totalCost }
+        self.completedDate = Date()
+    }
+    
+    init(id: UUID, items: [ShoppingItem], completedDate: Date) {
+        self.id = id
+        self.items = items
+        self.subtotal = items.reduce(0) { $0 + $1.subtotal }
+        self.totalTax = items.reduce(0) { $0 + $1.taxAmount }
+        self.grandTotal = items.reduce(0) { $0 + $1.totalCost }
+        self.completedDate = completedDate
     }
 }
 
@@ -355,13 +476,67 @@ class ShoppingListStore: ObservableObject {
                             hasUnknownTax: legacy.hasUnknownTax,
                             riskyAdditives: legacy.riskyAdditives,
                             nonRiskyAdditives: legacy.nonRiskyAdditives,
-                            additiveDetails: legacy.additiveDetails
+                            additiveDetails: legacy.additiveDetails,
+                            isPriceByMeasurement: false,
+                            measurementQuantity: 1.0,
+                            measurementUnit: "units"
                         )
                     }.sorted(by: { $0.dateAdded > $1.dateAdded })
                     // Save in new format
                     saveItems()
                 }
             }
+        }
+    }
+}
+
+class ShoppingHistoryStore: ObservableObject {
+    @Published var completedTrips: [CompletedShoppingTrip] = [] {
+        didSet {
+            saveTrips()
+        }
+    }
+    
+    private let tripsKey = "completed_shopping_trips"
+    
+    init() {
+        loadTrips()
+    }
+    
+    func addCompletedTrip(_ trip: CompletedShoppingTrip) {
+        completedTrips.insert(trip, at: 0) // Insert at beginning for newest-first order
+    }
+    
+    func deleteItemFromTrip(tripId: UUID, itemId: UUID) {
+        if let tripIndex = completedTrips.firstIndex(where: { $0.id == tripId }) {
+            let currentTrip = completedTrips[tripIndex]
+            let updatedItems = currentTrip.items.filter { $0.id != itemId }
+            
+            // Create a new trip with updated items
+            let updatedTrip = CompletedShoppingTrip(
+                id: currentTrip.id,
+                items: updatedItems,
+                completedDate: currentTrip.completedDate
+            )
+            
+            completedTrips[tripIndex] = updatedTrip
+        }
+    }
+    
+    func deleteTrip(tripId: UUID) {
+        completedTrips.removeAll { $0.id == tripId }
+    }
+    
+    private func saveTrips() {
+        if let encoded = try? JSONEncoder().encode(completedTrips) {
+            UserDefaults.standard.set(encoded, forKey: tripsKey)
+        }
+    }
+    
+    private func loadTrips() {
+        if let data = UserDefaults.standard.data(forKey: tripsKey),
+           let decoded = try? JSONDecoder().decode([CompletedShoppingTrip].self, from: data) {
+            completedTrips = decoded.sorted(by: { $0.completedDate > $1.completedDate })
         }
     }
 }

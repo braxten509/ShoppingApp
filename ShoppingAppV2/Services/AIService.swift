@@ -14,13 +14,8 @@ class AIService: ObservableObject {
     }
 
     private func extractContent(from data: Data, for model: String) throws -> String {
-        if model.contains("Gemini") {
-            let response = try JSONDecoder().decode(GeminiResponse.self, from: data)
-            return response.candidates.first?.content.parts.first?.text ?? ""
-        } else {
-            let response = try JSONDecoder().decode(AIResponse.self, from: data)
-            return response.choices.first?.message.content ?? ""
-        }
+        let response = try JSONDecoder().decode(AIResponse.self, from: data)
+        return response.choices.first?.message.content ?? ""
     }
     
 
@@ -495,8 +490,6 @@ class AIService: ObservableObject {
             return "OpenAI"
         case let m where m.hasPrefix("sonar"):
             return "Perplexity"
-        case let m where m.hasPrefix("gemini"):
-            return "Google"
         default:
             return "Unknown"
         }

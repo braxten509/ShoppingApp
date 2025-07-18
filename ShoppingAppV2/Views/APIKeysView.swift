@@ -4,13 +4,10 @@ struct APIKeysView: View {
     @ObservedObject var settingsService: SettingsService
     @State private var apiKeyInput: String = ""
     @State private var perplexityApiKeyInput: String = ""
-    @State private var geminiApiKeyInput: String = ""
     @State private var showingAPIKeyAlert = false
     @State private var showingPerplexityAPIKeyAlert = false
-    @State private var showingGeminiAPIKeyAlert = false
     @State private var showingDeleteConfirmation = false
     @State private var showingDeletePerplexityConfirmation = false
-    @State private var showingDeleteGeminiConfirmation = false
     
     var body: some View {
         List {
@@ -99,49 +96,6 @@ struct APIKeysView: View {
             } header: {
                 Text("Perplexity Configuration")
             }
-            
-            Section {
-                HStack {
-                    Text("API Key")
-                    Spacer()
-                    if settingsService.geminiAPIKey.isEmpty {
-                        Button(action: {
-                            geminiApiKeyInput = ""
-                            showingGeminiAPIKeyAlert = true
-                        }) {
-                            Text("Not Set")
-                                .foregroundColor(.red)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    } else {
-                        Text("••••••" + String(settingsService.geminiAPIKey.suffix(4)))
-                            .foregroundColor(.secondary)
-                        Button(action: {
-                            showingDeleteGeminiConfirmation = true
-                        }) {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                                .font(.system(size: 16))
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                
-                Link(destination: URL(string: "https://aistudio.google.com/app/apikey")!) {
-                    HStack {
-                        Image(systemName: "key.fill")
-                            .foregroundColor(.blue)
-                        Text("Get API Key from Google AI Studio")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                    }
-                }
-            } header: {
-                Text("Google Gemini Configuration")
-            }
         }
         .navigationTitle("API Keys")
         .navigationBarTitleDisplayMode(.inline)
@@ -171,15 +125,6 @@ struct APIKeysView: View {
         } message: {
             Text("Enter your Perplexity API key. You can find this in your Perplexity account settings.")
         }
-        .alert("Set Gemini API Key", isPresented: $showingGeminiAPIKeyAlert) {
-            TextField("API Key", text: $geminiApiKeyInput)
-            Button("Cancel", role: .cancel) { }
-            Button("Save") {
-                settingsService.geminiAPIKey = geminiApiKeyInput
-            }
-        } message: {
-            Text("Enter your Gemini API key. You can find this in your Google AI Studio settings.")
-        }
         .alert("Delete Perplexity API Key", isPresented: $showingDeletePerplexityConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -187,14 +132,6 @@ struct APIKeysView: View {
             }
         } message: {
             Text("Are you sure you want to delete your Perplexity API key? You'll need to enter it again to use price search features.")
-        }
-        .alert("Delete Gemini API Key", isPresented: $showingDeleteGeminiConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                settingsService.geminiAPIKey = ""
-            }
-        } message: {
-            Text("Are you sure you want to delete your Gemini API key? You'll need to enter it again to use Gemini AI features.")
         }
     }
 }

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var openAIService: OpenAIService
-    @ObservedObject var settingsStore: SettingsStore
     @ObservedObject var settingsService: SettingsService
     @ObservedObject var store: ShoppingListStore
     @ObservedObject var historyService: HistoryService
@@ -10,13 +9,10 @@ struct SettingsView: View {
     @State private var showingPromptsHistory = false
     @State private var apiKeyInput: String = ""
     @State private var perplexityApiKeyInput: String = ""
-    @State private var geminiApiKeyInput: String = ""
     @State private var showingAPIKeyAlert = false
     @State private var showingPerplexityAPIKeyAlert = false
-    @State private var showingGeminiAPIKeyAlert = false
     @State private var showingDeleteConfirmation = false
     @State private var showingDeletePerplexityConfirmation = false
-    @State private var showingDeleteGeminiConfirmation = false
     @State private var showingExportSheet = false
     @State private var exportDocument: ShoppingDataDocument?
     @State private var showingPromptCustomization = false
@@ -35,7 +31,7 @@ struct SettingsView: View {
                                 Text("API Keys")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("Manage OpenAI, Perplexity, and Gemini API keys")
+                                Text("Manage OpenAI and Perplexity keys")
                                     .foregroundColor(.secondary)
                                     .font(.caption)
                             }
@@ -154,7 +150,6 @@ struct SettingsView: View {
 #Preview {
     SettingsView(
         openAIService: OpenAIService(),
-        settingsStore: SettingsStore(),
         settingsService: SettingsService(),
         store: ShoppingListStore(),
         historyService: HistoryService()

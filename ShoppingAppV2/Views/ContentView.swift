@@ -11,7 +11,6 @@ struct ContentView: View {
     @StateObject private var store = ShoppingListStore()
     @StateObject private var locationManager = LocationManager()
     @StateObject private var openAIService = OpenAIService()
-    @StateObject private var settingsStore = SettingsStore()
     @StateObject private var settingsService = SettingsService()
     @StateObject private var billingService = BillingService()
     @StateObject private var historyService = HistoryService()
@@ -87,7 +86,7 @@ struct ContentView: View {
                 CameraView(selectedImage: $selectedImage)
             }
             .sheet(isPresented: $showingAddItem) {
-                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsStore: settingsStore, settingsService: settingsService)
+                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsService: settingsService)
             }
             .sheet(item: $editingItem) { item in
                 ItemEditView(
@@ -100,8 +99,7 @@ struct ContentView: View {
                 if let info = extractedInfo {
                     VerifyItemView(
                         extractedInfo: info, 
-                        store: store, 
-                        settingsStore: settingsStore, 
+                        store: store,
                         aiService: aiService,
                         settingsService: settingsService,
                         onRetakePhoto: {
@@ -117,7 +115,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(openAIService: openAIService, settingsStore: settingsStore, settingsService: settingsService, store: store, historyService: historyService)
+                SettingsView(openAIService: openAIService, settingsService: settingsService, store: store, historyService: historyService)
             }
             .sheet(isPresented: $showingAdditiveDetail) {
                 if let item = selectedItemForAdditives {
@@ -269,42 +267,6 @@ struct ContentView: View {
                     Spacer()
                     
                     VStack(alignment: .trailing, spacing: 4) {
-                        if settingsStore.healthTrackingEnabled {
-                            if item.riskyAdditives > 0 || item.nonRiskyAdditives > 0 {
-                                HStack(spacing: 8) {
-                                    if item.riskyAdditives > 0 {
-                                        Button(action: {
-                                            selectedItemForAdditives = item
-                                            showingAdditiveDetail = true
-                                        }) {
-                                            Text("\(item.riskyAdditives) Risky Additives")
-                                                .font(.caption2)
-                                                .foregroundColor(.red)
-                                                .fontWeight(.medium)
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                    if item.nonRiskyAdditives > 0 {
-                                        Button(action: {
-                                            selectedItemForAdditives = item
-                                            showingAdditiveDetail = true
-                                        }) {
-                                            Text("\(item.nonRiskyAdditives) Safe")
-                                                .font(.caption2)
-                                                .foregroundColor(.green)
-                                                .fontWeight(.medium)
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                }
-                            } else {
-                                Text("Unknown Additives")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                    .fontWeight(.medium)
-                            }
-                        }
-                        
                         Text("$\(item.totalCost, specifier: "%.2f")")
                             .font(.headline)
                             .fontWeight(.medium)

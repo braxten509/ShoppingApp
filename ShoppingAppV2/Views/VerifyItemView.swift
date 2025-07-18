@@ -1,20 +1,31 @@
 import SwiftUI
 
-struct AddItemView: View {
+extension Optional where Wrapped == String {
+    var isNilOrEmpty: Bool {
+        return self?.isEmpty ?? true
+    }
+}
+
+struct VerifyItemView: View {
+    let extractedInfo: PriceTagInfo
     @ObservedObject var store: ShoppingListStore
-    @ObservedObject var locationManager: LocationManager
     @ObservedObject var aiService: AIService
-    @ObservedObject var settingsStore: SettingsStore
     @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
+    let onRetakePhoto: (() -> Void)?
+    let originalImage: UIImage?
+    let locationString: String?
     
-    @State private var name = ""
-    @State private var costString = ""
+    @State private var name: String
+    @State private var costString: String
     @State private var taxMode: TaxMode = .defaultMode
-    @State private var customTaxRateString = "0.00"
+    @State private var customTaxRateString: String
     @State private var detectedTaxRate: Double? = nil
-    @State private var isDetectingTax = false
+    @State private var hasUnknownTax: Bool
+    @State private var taxDescription: String?
     @State private var isAnalyzingAdditives = false
+    @State private var isRetryingAnalysis = false
+    @State private var isDetectingTax = false
     @State private var showingPriceSearchAlert = false
     @State private var priceSearchSpecification = ""
     @State private var selectedWebsite = "Broulim's"
@@ -22,13 +33,12 @@ struct AddItemView: View {
     @State private var showingPriceSearchWebView = false
     @State private var webViewSelectedPrice: Double? = nil
     @State private var webViewSelectedItemName: String? = nil
-    @State private var showingTaxErrorAlert = false
-    @State private var showingAdditiveErrorAlert = false
-    @State private var showingPriceErrorAlert = false
-    @State private var currentErrorMessage = ""
+    @State private var retryCounter = 0
     @State private var riskyAdditives = 0
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
+    @State private var dynamicAnalysisIssues: [String] = []
+    
     
     enum TaxMode: String, CaseIterable {
         case defaultMode = "Default"
@@ -37,11 +47,32 @@ struct AddItemView: View {
         
         var id: String { self.rawValue }
     }
+
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, aiService: AIService, settingsService: SettingsService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil) {
+        self.extractedInfo = extractedInfo
+        self.store = store
+        self.aiService = aiService
+        self.settingsService = settingsService
+        self.onRetakePhoto = onRetakePhoto
+        self.originalImage = originalImage
+        self.locationString = locationString
+        self._name = State(initialValue: extractedInfo.name)
+        self._costString = State(initialValue: String(format: "%.2f", extractedInfo.price))
+        self._customTaxRateString = State(initialValue: String(format: "%.2f", extractedInfo.taxRate ?? 0.0))
+        self._hasUnknownTax = State(initialValue: extractedInfo.taxDescription == "Unknown Taxes" || extractedInfo.taxRate == nil)
+        self._taxDescription = State(initialValue: extractedInfo.taxDescription)
+        self._dynamicAnalysisIssues = State(initialValue: extractedInfo.analysisIssues ?? [])
+        
+        // Initialize detected tax rate if available from extracted info
+        if let extractedTaxRate = extractedInfo.taxRate {
+            self._detectedTaxRate = State(initialValue: extractedTaxRate)
+        }
+    }
     
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Item Details")) {
+                Section(header: Text("Verify Scanned Information")) {
                     TextField("Item Name", text: $name)
                     
                     HStack {
@@ -63,65 +94,55 @@ struct AddItemView: View {
                     }
                 }
                 
-                if settingsStore.healthTrackingEnabled {
-                    Section(header: Text("Health Analysis")) {
-                        if isAnalyzingAdditives {
-                            HStack {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Analyzing additives...")
-                                    .foregroundColor(.secondary)
-                            }
-                        } else {
-                            HStack {
-                                Text("Risky Additives:")
-                                Spacer()
-                                Text("\(riskyAdditives)")
-                                    .foregroundColor(riskyAdditives > 0 ? .red : .secondary)
-                                    .fontWeight(.medium)
-                            }
-                            
-                            HStack {
-                                Text("Safe Additives:")
-                                Spacer()
-                                Text("\(nonRiskyAdditives)")
-                                    .foregroundColor(nonRiskyAdditives > 0 ? .green : .secondary)
-                                    .fontWeight(.medium)
-                            }
-                            
-                            if riskyAdditives == 0 && nonRiskyAdditives == 0 {
-                                if name.isEmpty {
-                                    Text("Unknown Additives")
-                                        .foregroundColor(.secondary)
+                // Display analysis issues if any
+                if !dynamicAnalysisIssues.isEmpty {
+                    Section(header: Text("Analysis Notes")) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(dynamicAnalysisIssues, id: \.self) { issue in
+                                HStack(alignment: .top) {
+                                    Image(systemName: issue.contains("succeeded") ? "checkmark.circle" : "exclamationmark.triangle")
+                                        .foregroundColor(issue.contains("succeeded") ? .green : .orange)
                                         .font(.caption)
-                                } else {
-                                    Button("Analyze Additives") {
-                                        analyzeAdditives()
-                                    }
-                                    .disabled(isAnalyzingAdditives)
+                                        .padding(.top, 2)
+                                    
+                                    Text(issue)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                         }
+                        .padding(.vertical, 4)
                     }
                 }
                 
                 Section(header: Text("Actions")) {
-                    // Calculate taxes button - shows when AI tax detection is enabled
-                    if shouldDetectTaxRate() && !isDetectingTax {
-                        Button("Calculate Taxes") {
-                            detectTaxRate(andAddItem: false)
-                        }
-                        .foregroundColor(.green)
-                        .disabled(name.isEmpty)
-                    } else if isDetectingTax {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Calculating taxes...")
-                                .foregroundColor(.secondary)
+                    if let originalImage = originalImage {
+                        if isRetryingAnalysis {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .id("retry-progress-\(retryCounter)")
+                                Text("Retrying analysis...")
+                                    .foregroundColor(.secondary)
+                            }
+                            .id("retry-loading-\(retryCounter)")
+                        } else {
+                            Button("Retry Analysis") {
+                                Task { @MainActor in
+                                    retryCounter += 1
+                                    isRetryingAnalysis = true
+                                    try? await Task.sleep(nanoseconds: 100_000_000)
+                                    await retryAnalysis(with: originalImage)
+                                }
+                            }
+                            .foregroundColor(.blue)
+                            .disabled(isRetryingAnalysis)
                         }
                     }
                     
+                    
+                    // Search Price button
                     Button("Search Price") {
                         setupPriceSearch()
                     }
@@ -134,6 +155,13 @@ struct AddItemView: View {
                         }
                         .font(.caption)
                         .foregroundColor(.blue)
+                    }
+                    
+                    if let onRetakePhoto = onRetakePhoto {
+                        Button("Retry & Take New Photo") {
+                            onRetakePhoto()
+                        }
+                        .foregroundColor(.orange)
                     }
                 }
                 
@@ -161,7 +189,7 @@ struct AddItemView: View {
                     }
                 }
             }
-            .navigationTitle("Add Item")
+            .navigationTitle("Verify Item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -171,7 +199,7 @@ struct AddItemView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
+                    Button("Add Item") {
                         if shouldDetectTaxRate() {
                             detectTaxRate()
                         } else {
@@ -181,7 +209,7 @@ struct AddItemView: View {
                     .disabled(costString.isEmpty || isDetectingTax)
                 }
             }
-            .sheet(isPresented: $showingPriceSearchAlert) {
+.sheet(isPresented: $showingPriceSearchAlert) {
                 NavigationView {
                     Form {
                         Section(header: Text("Search Details")) {
@@ -249,29 +277,36 @@ struct AddItemView: View {
                             priceSourceURL = nil
                         }
                         
+                        // Update analysis issues
+                        dynamicAnalysisIssues.removeAll { $0.contains("price search") }
+                        let issueText = "Price search succeeded - selected \(webViewSelectedItemName ?? "item") at $\(String(format: "%.2f", price)) from \(selectedWebsite)"
+                        dynamicAnalysisIssues.append(issueText)
+                        
                         // Reset for next search
                         webViewSelectedPrice = nil
                         webViewSelectedItemName = nil
                     }
                 }
             }
-            .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
-                Button("OK") { 
-                    addItem() // Still proceed with adding the item
-                }
-            } message: {
-                Text(currentErrorMessage)
-            }
-            .alert("Additive Analysis Error", isPresented: $showingAdditiveErrorAlert) {
-                Button("OK") { }
-            } message: {
-                Text(currentErrorMessage)
-            }
-            .alert("Price Guess Error", isPresented: $showingPriceErrorAlert) {
-                Button("OK") { }
-            } message: {
-                Text(currentErrorMessage)
-            }
+        }
+    }
+    
+    @MainActor
+    private func retryAnalysis(with image: UIImage) async {
+        do {
+            let newInfo = try await aiService.analyzePriceTag(image: image, location: locationString)
+            
+            self.name = newInfo.name
+            self.costString = String(format: "%.2f", newInfo.price)
+            self.customTaxRateString = String(format: "%.2f", newInfo.taxRate ?? 0.0)
+            self.detectedTaxRate = newInfo.taxRate
+            self.hasUnknownTax = newInfo.taxDescription == "Unknown Taxes" || newInfo.taxRate == nil
+            self.taxDescription = newInfo.taxDescription
+            self.isRetryingAnalysis = false
+            
+        } catch {
+            self.isRetryingAnalysis = false
+            print("Error retrying analysis: \(error)")
         }
     }
     
@@ -290,48 +325,8 @@ struct AddItemView: View {
         }
     }
     
-    private func isAmbiguousName(_ name: String) -> Bool {
-        let lowercased = name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let ambiguousNames = ["test", "item", "thing", "product", "unknown", "unknown item"]
-        
-        // Check if it's a common ambiguous name
-        if ambiguousNames.contains(lowercased) {
-            return true
-        }
-        
-        // Check if it's mostly numbers
-        if lowercased.allSatisfy({ $0.isNumber || $0.isWhitespace }) {
-            return true
-        }
-        
-        // Check if it's very short and non-descriptive
-        if lowercased.count <= 2 {
-            return true
-        }
-        
-        return false
-    }
-    
-    private func detectTaxRate(andAddItem: Bool = true) {
+    private func detectTaxRate() {
         isDetectingTax = true
-        
-        let locationString: String? = {
-            guard let placemark = locationManager.placemark else { return nil }
-            
-            var components: [String] = []
-            
-            if let locality = placemark.locality {
-                components.append(locality)
-            }
-            if let county = placemark.subAdministrativeArea {
-                components.append("\(county) County")
-            }
-            if let state = placemark.administrativeArea {
-                components.append(state)
-            }
-            
-            return components.isEmpty ? nil : components.joined(separator: ", ")
-        }()
         
         Task {
             do {
@@ -340,20 +335,13 @@ struct AddItemView: View {
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
                     self.detectedTaxRate = detectedTaxRate
-                    if andAddItem {
-                        self.addItem()
-                    }
+                    self.addItem()
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
                     self.detectedTaxRate = nil
-                    self.currentErrorMessage = error.localizedDescription
-                    self.showingTaxErrorAlert = true
-                    if andAddItem {
-                        // Still proceed with adding the item even if tax detection failed
-                        self.addItem()
-                    }
+                    self.addItem() // Still proceed with adding the item
                 }
             }
         }
@@ -387,42 +375,10 @@ struct AddItemView: View {
             name: name.isEmpty ? "Unnamed Item" : name,
             cost: Double(costString) ?? 0,
             taxRate: finalTaxRate,
-            hasUnknownTax: hasUnknownTax,
-            riskyAdditives: settingsStore.healthTrackingEnabled ? riskyAdditives : 0,
-            nonRiskyAdditives: settingsStore.healthTrackingEnabled ? nonRiskyAdditives : 0,
-            additiveDetails: settingsStore.healthTrackingEnabled ? additiveDetails : []
+            hasUnknownTax: hasUnknownTax
         )
         store.addItem(item)
         presentationMode.wrappedValue.dismiss()
-    }
-    
-    private func analyzeAdditives() {
-        guard settingsStore.healthTrackingEnabled && !name.isEmpty else { return }
-        
-        isAnalyzingAdditives = true
-        
-        Task {
-            do {
-                if let result = try await aiService.analyzeProductForAdditives(productName: name) {
-                    DispatchQueue.main.async {
-                        self.riskyAdditives = result.risky
-                        self.nonRiskyAdditives = result.safe
-                        self.additiveDetails = result.additiveDetails
-                        self.isAnalyzingAdditives = false
-                    }
-                } else {
-                    DispatchQueue.main.async {
-                        self.isAnalyzingAdditives = false
-                    }
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isAnalyzingAdditives = false
-                    self.currentErrorMessage = error.localizedDescription
-                    self.showingAdditiveErrorAlert = true
-                }
-            }
-        }
     }
     
     private func setupPriceSearch() {
@@ -466,6 +422,15 @@ struct AddItemView: View {
                         .foregroundColor(.secondary)
                     Spacer()
                 }
+            } else if let taxDesc = taxDescription {
+                HStack {
+                    Text("Tax Info:")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(taxDesc)
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
             }
         } else if taxMode == .ai {
             if isDetectingTax {
@@ -480,6 +445,15 @@ struct AddItemView: View {
                     Text("\(detected, specifier: "%.2f")% (AI-detected)")
                         .foregroundColor(.secondary)
                     Spacer()
+                }
+            } else if let taxDesc = taxDescription {
+                HStack {
+                    Text("Tax Info:")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(taxDesc)
+                        .foregroundColor(.secondary)
+                        .font(.caption)
                 }
             }
         }

@@ -41,12 +41,6 @@ class SettingsService: ObservableObject {
         }
     }
     
-    @Published var geminiAPIKey: String {
-        didSet {
-            UserDefaults.standard.set(geminiAPIKey, forKey: "geminiAPIKey")
-        }
-    }
-    
     @Published var useManualTaxRate: Bool {
         didSet {
             UserDefaults.standard.set(useManualTaxRate, forKey: "useManualTaxRate")
@@ -76,10 +70,8 @@ class SettingsService: ObservableObject {
         self.selectedModelForTagIdentification = UserDefaults.standard.string(forKey: "selectedModelForTagIdentification") ?? "sonar-pro"
         self.openAIAPIKey = UserDefaults.standard.string(forKey: "openAIAPIKey") ?? ""
         self.perplexityAPIKey = UserDefaults.standard.string(forKey: "perplexityAPIKey") ?? ""
-        self.geminiAPIKey = UserDefaults.standard.string(forKey: "geminiAPIKey") ?? ""
         self.useManualTaxRate = UserDefaults.standard.bool(forKey: "useManualTaxRate")
         self.manualTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
-        
     }
     
     

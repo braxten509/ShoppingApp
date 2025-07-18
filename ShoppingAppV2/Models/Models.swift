@@ -365,12 +365,3 @@ class ShoppingListStore: ObservableObject {
         }
     }
 }
-
-class SettingsStore: ObservableObject {
-    @Published var healthTrackingEnabled: Bool = false
-    
-    init() {
-        // Health feature is disabled - always return false
-        self.healthTrackingEnabled = false
-    }
-}

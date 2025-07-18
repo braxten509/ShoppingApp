@@ -26,6 +26,23 @@ struct PriceTagInfo: Codable {
     let taxRate: Double?
     let taxDescription: String?
     let ingredients: String?
+    let analysisIssues: [String]?
+}
+
+struct PriceSearchResult: Codable {
+    let found: Bool
+    let itemName: String
+    let price: Double?
+    let description: String
+    let sourceURL: String?
+    
+    init(found: Bool, itemName: String = "", price: Double? = nil, description: String = "", sourceURL: String? = nil) {
+        self.found = found
+        self.itemName = itemName
+        self.price = price
+        self.description = description
+        self.sourceURL = sourceURL
+    }
 }
 
 struct PromptHistoryItem: Identifiable, Codable {

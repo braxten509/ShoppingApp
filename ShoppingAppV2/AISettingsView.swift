@@ -36,21 +36,6 @@ struct AISettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             
-            Section("Advanced Settings") {
-                NavigationLink(destination: PromptCustomizationView(settingsService: settingsService)) {
-                    HStack {
-                        Image(systemName: "text.bubble")
-                            .foregroundColor(.orange)
-                            .frame(width: 24)
-                        
-                        Text("Customize AI Prompts")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                    }
-                }
-            }
             
             Section("AI Interactions") {
                 NavigationLink(destination: PromptsHistoryView(historyService: historyService)) {

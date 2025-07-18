@@ -67,6 +67,41 @@ struct SettingsView: View {
                 }
                 
                 Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Use Manual Tax Rate", isOn: $settingsService.useManualTaxRate)
+                            .font(.headline)
+                        
+                        if settingsService.useManualTaxRate {
+                            HStack {
+                                Text("Tax Rate:")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                                
+                                TextField("0.0", value: $settingsService.manualTaxRate, format: .number)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(width: 80)
+                                    .keyboardType(.decimalPad)
+                                
+                                Text("%")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Tax Settings")
+                } footer: {
+                    if settingsService.useManualTaxRate {
+                        Text("Manual tax rate will override AI-based tax detection for all items.")
+                    } else {
+                        Text("AI will determine tax rates based on item type and location.")
+                    }
+                }
+                
+                Section {
                     Button(action: {
                         exportDataAsFile()
                     }) {

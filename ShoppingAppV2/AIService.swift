@@ -23,26 +23,18 @@ class AIService: ObservableObject {
         }
     }
     
-    private func buildPrompt(for type: PromptType, replacements: [String: String]) -> String {
-        var prompt = settingsService.getPrompt(for: type)
-        
-        for (placeholder, value) in replacements {
-            prompt = prompt.replacingOccurrences(of: "{\(placeholder)}", with: value)
-        }
-        
-        return prompt
-    }
 
     func analyzeItemForTax(itemName: String, location: String? = nil) async throws -> Double? {
+        // Check if manual tax rate is enabled
+        if settingsService.useManualTaxRate {
+            return settingsService.manualTaxRate
+        }
+        
         let model = settingsService.selectedModelForTaxRate
         let apiKey = getAPIKey(for: model)
         let url = getAPIURL(for: model)
 
-        let locationContext = location != nil ? "The user is in \(location!)." : "No location provided."
-        let prompt = buildPrompt(for: .taxRate, replacements: [
-            "itemName": itemName,
-            "locationContext": locationContext
-        ])
+        let prompt = settingsService.getTaxRatePrompt(itemName: itemName, location: location)
         
         let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
         
@@ -52,11 +44,45 @@ class AIService: ObservableObject {
         
         let cleanedContent = extractJSON(from: content)
         
-        struct TaxResponse: Codable { let taxRate: Double? }
+        struct TaxResponse: Codable { 
+            let taxRate: Double?
+            let explanation: String?
+        }
         
-        guard let jsonData = cleanedContent.data(using: .utf8),
-              let taxResponse = try? JSONDecoder().decode(TaxResponse.self, from: jsonData) else {
-            throw NSError(domain: "APIError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode tax response"])
+        var taxResponse: TaxResponse?
+        
+        // Try to parse JSON first
+        if let jsonData = cleanedContent.data(using: .utf8),
+           let parsed = try? JSONDecoder().decode(TaxResponse.self, from: jsonData) {
+            taxResponse = parsed
+        } else {
+            // Fallback: try to extract tax rate from text
+            print("JSON parsing failed, attempting to extract tax rate from text: \(content)")
+            
+            // Look for patterns like "6.0%", "6%", "tax rate is 6.0", etc.
+            let patterns = [
+                #"(?:sales tax rate|tax rate|combined.*?rate).*?(?:is )?(\d+(?:\.\d+)?)%"#,
+                #"(\d+(?:\.\d+)?)%.*?(?:sales tax|tax rate)"#,
+                #"\{[^}]*"taxRate"[^}]*?(\d+(?:\.\d+)?)[^}]*\}"#
+            ]
+            
+            var extractedRate: Double?
+            for pattern in patterns {
+                if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                   let match = regex.firstMatch(in: content, options: [], range: NSRange(content.startIndex..., in: content)),
+                   let range = Range(match.range(at: 1), in: content) {
+                    let rateString = String(content[range])
+                    extractedRate = Double(rateString)
+                    print("Extracted tax rate: \(extractedRate ?? 0) from pattern: \(pattern)")
+                    break
+                }
+            }
+            
+            if let rate = extractedRate {
+                taxResponse = TaxResponse(taxRate: rate, explanation: "Extracted from text response")
+            } else {
+                throw NSError(domain: "APIError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to extract tax rate from response: \(content)"])
+            }
         }
         
         // Track this interaction with billing and history
@@ -74,7 +100,15 @@ class AIService: ObservableObject {
         ))
         billingService.addCost(amount: 0.001)
         
-        return taxResponse.taxRate
+        // If tax rate is nil, throw a descriptive error using AI's explanation
+        if let response = taxResponse, let rate = response.taxRate {
+            return rate
+        } else {
+            let errorMessage = taxResponse?.explanation ?? "Unable to determine tax rate for '\(itemName)'"
+            throw NSError(domain: "TaxAnalysisError", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: errorMessage
+            ])
+        }
     }
 
     func analyzePriceTag(image: UIImage, location: String? = nil) async throws -> PriceTagInfo {
@@ -82,10 +116,23 @@ class AIService: ObservableObject {
         let apiKey = getAPIKey(for: model)
         let url = getAPIURL(for: model)
         
-        let locationContext = location != nil ? "The user is in \(location!)." : "No location provided."
-        let prompt = buildPrompt(for: .priceTagAnalysis, replacements: [
-            "locationContext": locationContext
-        ])
+        let prompt = """
+        Analyze the image. Respond with ONLY a valid JSON object in the format:
+        {"name": "<item_name>", "price": <price>, "taxRate": <tax_rate>, "taxDescription": "<description>", "ingredients": "<ingredients_list>", "analysisIssues": ["<issue1>", "<issue2>"]}
+        
+        Instructions:
+        - name: Extract the exact product name. Use "Unknown Item" only if text is completely unreadable.
+        - price: Extract the numerical price. Use 0 only if no price is visible or readable.
+        - taxRate: Extract tax rate if visible on tag. Use null if no tax info is present (this is normal - tax rates are rarely shown on price tags).
+        - taxDescription: Describe tax source or "Unknown Taxes" if no tax info.
+        - ingredients: Extract full ingredients list if visible, or null if not present.
+        - analysisIssues: Provide specific explanations for any default values you return:
+          * If you return "Unknown Item" for name: explain specifically why (e.g., "Text is too blurry to read", "Product name is cut off in image", "Poor lighting obscures text")
+          * If you return 0 for price: explain specifically why (e.g., "Price sticker is peeled off", "Numbers are too small to read clearly", "Price is partially covered")
+          * Do NOT mention tax rate issues since tax rates are usually not on price tags anyway
+        
+        Always provide genuine, specific explanations based on what you actually observe in the image. Empty array only if all values were successfully extracted.
+        """
 
         let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model, image: image)
         
@@ -99,6 +146,9 @@ class AIService: ObservableObject {
               let priceTagInfo = try? JSONDecoder().decode(PriceTagInfo.self, from: jsonData) else {
             throw NSError(domain: "APIError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode price tag response"])
         }
+        
+        // Use AI-provided analysis issues (the AI should explain any default values it returns)
+        // No client-side fallback - we want the AI to provide context-specific explanations
         
         // Track this interaction with billing and history
         historyService.add(item: PromptHistoryItem(
@@ -115,7 +165,108 @@ class AIService: ObservableObject {
         ))
         billingService.addCost(amount: 0.005)
         
-        return priceTagInfo
+        // Automatically search for tax info if:
+        // 1. Manual tax rate is not enabled (meaning we should use AI for tax detection)
+        // 2. We have a valid item name
+        // 3. Tax rate wasn't already found in the image
+        var updatedPriceTagInfo = priceTagInfo
+        if !settingsService.useManualTaxRate && 
+           priceTagInfo.name != "Unknown Item" && 
+           !priceTagInfo.name.isEmpty &&
+           priceTagInfo.taxRate == nil {
+            
+            do {
+                let detectedTaxRate = try await analyzeItemForTax(itemName: priceTagInfo.name, location: location)
+                updatedPriceTagInfo = PriceTagInfo(
+                    name: priceTagInfo.name,
+                    price: priceTagInfo.price,
+                    taxRate: detectedTaxRate,
+                    taxDescription: location != nil ? "\(detectedTaxRate ?? 0)% (Auto-detected)" : "\(detectedTaxRate ?? 0)% (Default rate)",
+                    ingredients: priceTagInfo.ingredients,
+                    analysisIssues: priceTagInfo.analysisIssues
+                )
+            } catch {
+                // If tax lookup fails, keep original info but add note
+                var issues = priceTagInfo.analysisIssues ?? []
+                issues.append("Tax rate lookup failed: \(error.localizedDescription)")
+                updatedPriceTagInfo = PriceTagInfo(
+                    name: priceTagInfo.name,
+                    price: priceTagInfo.price,
+                    taxRate: nil,
+                    taxDescription: "Unknown Taxes",
+                    ingredients: priceTagInfo.ingredients,
+                    analysisIssues: issues
+                )
+            }
+        }
+        
+        return updatedPriceTagInfo
+    }
+    
+    func searchPrice(itemName: String, specification: String?, website: String, location: String?) async throws -> PriceSearchResult {
+        let model = settingsService.selectedModelForTagIdentification
+        let apiKey = getAPIKey(for: model)
+        let url = getAPIURL(for: model)
+        
+        // Build the search URL based on selected website
+        let searchURL = buildSearchURL(for: website, itemName: itemName, specification: specification)
+        let locationContext = location ?? "unknown location"
+        
+        let prompt = """
+        Search for the item "\(itemName)" \(specification != nil ? "with specification: \(specification!)" : "") on \(website) at this URL: \(searchURL)
+        
+        Current location: \(locationContext)
+        
+        Instructions:
+        1. Go to the URL and search for products matching "\(itemName)" \(specification != nil ? "with specification \(specification!)" : "")
+        2. If you find similar items, return:
+           - found: true
+           - itemName: exact product name from website
+           - price: price as number only (no $ symbol)
+           - description: brief product description (1-2 sentences)
+           - sourceURL: the specific product page URL
+        3. If NO similar items are found, return:
+           - found: false
+           - itemName: ""
+           - price: null
+           - description: ""
+           - sourceURL: null
+        
+        Return response as JSON in this exact format:
+        {
+            "found": boolean,
+            "itemName": "string",
+            "price": number or null,
+            "description": "string",
+            "sourceURL": "string or null"
+        }
+        """
+        
+        let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
+        
+        do {
+            let result = try JSONDecoder().decode(PriceSearchResult.self, from: data)
+            return result
+        } catch {
+            // If JSON parsing fails, return not found
+            return PriceSearchResult(found: false, description: "Unable to parse search results")
+        }
+    }
+    
+    private func buildSearchURL(for website: String, itemName: String, specification: String?) -> String {
+        let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
+        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
+        
+        switch website {
+        case "Broulim's":
+            return "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
+        case "Walmart":
+            return "https://www.walmart.com/search?q=\(encodedSearchTerm)"
+        case "Target":
+            return "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
+        default:
+            return ""
+        }
     }
     
     func guessPrice(itemName: String, location: String?, storeName: String? = nil, brand: String? = nil, additionalDetails: String?) async throws -> (price: Double?, sourceURL: String?) {
@@ -123,12 +274,11 @@ class AIService: ObservableObject {
         let apiKey = getAPIKey(for: model)
         let url = getAPIURL(for: model)
 
-        let prompt = buildPrompt(for: .priceGuessing, replacements: [
-            "itemName": itemName,
-            "brand": brand ?? "",
-            "additionalDetails": additionalDetails ?? "",
-            "storeName": storeName ?? "a major retailer"
-        ])
+        let prompt = """
+        Find the price of "\(itemName)" \(brand != nil ? "brand: \(brand!)" : "") \(additionalDetails != nil ? "details: \(additionalDetails!)" : "") at \(storeName ?? "a major retailer").
+        Respond with ONLY a valid JSON object in the format {"estimatedPrice": <price>, "sourceURL": "<url>", "explanation": "<explanation>"}.
+        If no price is found, return {"estimatedPrice": null, "sourceURL": null, "explanation": "<specific reason>"}.
+        """
 
         let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
         
@@ -141,6 +291,7 @@ class AIService: ObservableObject {
         struct PriceResponse: Codable {
             let estimatedPrice: Double?
             let sourceURL: String?
+            let explanation: String?
         }
         
         guard let jsonData = cleanedContent.data(using: .utf8),
@@ -163,6 +314,14 @@ class AIService: ObservableObject {
         ))
         billingService.addCost(amount: 0.002)
         
+        // If price is nil, throw a descriptive error using AI's explanation
+        if priceResponse.estimatedPrice == nil {
+            let errorMessage = priceResponse.explanation ?? "Unable to find current pricing for '\(itemName)'"
+            throw NSError(domain: "PriceGuessError", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: errorMessage
+            ])
+        }
+        
         return (priceResponse.estimatedPrice, priceResponse.sourceURL)
     }
 
@@ -171,9 +330,12 @@ class AIService: ObservableObject {
         let apiKey = getAPIKey(for: model)
         let url = getAPIURL(for: model)
 
-        let prompt = buildPrompt(for: .additiveAnalysis, replacements: [
-            "productName": productName
-        ])
+        let prompt = """
+        Analyze the additives in "\(productName)".
+        Respond with ONLY a valid JSON object in the format:
+        {"riskyAdditives": [{"name": "<name>", "riskLevel": "<level>", "description": "<desc>"}], "safeAdditives": [{"name": "<name>", "description": "<desc>"}], "explanation": "<explanation>"}
+        If ingredients are unknown, return {"riskyAdditives": null, "safeAdditives": null, "explanation": "<specific reason>"}.
+        """
 
         let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
         
@@ -186,6 +348,7 @@ class AIService: ObservableObject {
         struct AdditivesResponse: Codable {
             let riskyAdditives: [AdditiveInfo]?
             let safeAdditives: [AdditiveInfo]?
+            let explanation: String?
         }
         
         guard let jsonData = cleanedContent.data(using: .utf8),
@@ -207,6 +370,14 @@ class AIService: ObservableObject {
             model: model
         ))
         billingService.addCost(amount: 0.001)
+        
+        // If both risky and safe additives are nil, throw a descriptive error using AI's explanation
+        if additivesResponse.riskyAdditives == nil && additivesResponse.safeAdditives == nil {
+            let errorMessage = additivesResponse.explanation ?? "Unable to analyze additives for '\(productName)'"
+            throw NSError(domain: "AdditiveAnalysisError", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: errorMessage
+            ])
+        }
         
         return (additivesResponse.riskyAdditives?.count ?? 0, additivesResponse.safeAdditives?.count ?? 0, (additivesResponse.riskyAdditives ?? []) + (additivesResponse.safeAdditives ?? []))
     }
@@ -230,16 +401,6 @@ class AIService: ObservableObject {
             let base64Image = imageData.base64EncodedString()
             
             switch model {
-            case "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001":
-                request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-                payload = [
-                    "contents": [
-                        "parts": [
-                            ["text": prompt],
-                            ["inline_data": ["mime_type": "image/jpeg", "data": base64Image]]
-                        ]
-                    ]
-                ]
             default: // OpenAI and Perplexity
                 request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                 let modelName = model
@@ -259,15 +420,6 @@ class AIService: ObservableObject {
             }
         } else {
             switch model {
-            case "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001":
-                request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-                payload = [
-                    "contents": [
-                        "parts": [
-                            ["text": prompt]
-                        ]
-                    ]
-                ]
             default: // OpenAI and Perplexity
                 request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                 let modelName = model
@@ -291,12 +443,10 @@ class AIService: ObservableObject {
 
     private func getAPIKey(for model: String) -> String {
         switch model {
-        case "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini":
+        case "gpt-4o-mini":
             return settingsService.openAIAPIKey
-        case "sonar-pro", "sonar", "sonar-reasoning-pro":
+        case "sonar-pro", "sonar":
             return settingsService.perplexityAPIKey
-        case "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001":
-            return settingsService.geminiAPIKey
         default:
             return ""
         }
@@ -305,9 +455,7 @@ class AIService: ObservableObject {
     private func supportsImages(model: String) -> Bool {
         // All models in our supported list have vision capabilities
         switch model {
-        case "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini", 
-             "sonar-pro", "sonar", "sonar-reasoning-pro",
-             "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001":
+        case "gpt-4o-mini", "sonar-pro", "sonar":
             return true
         default:
             return false
@@ -316,10 +464,8 @@ class AIService: ObservableObject {
     
     private func getAPIURL(for model: String) -> URL {
         switch model {
-        case "sonar-pro", "sonar", "sonar-reasoning-pro":
+        case "sonar-pro", "sonar":
             return URL(string: "https://api.perplexity.ai/chat/completions")!
-        case "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001":
-            return URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
         default:
             return URL(string: "https://api.openai.com/v1/chat/completions")!
         }
@@ -355,4 +501,5 @@ class AIService: ObservableObject {
             return "Unknown"
         }
     }
+    
 }

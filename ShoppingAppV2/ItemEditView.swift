@@ -12,13 +12,16 @@ struct ItemEditView: View {
     @State private var taxRateString: String
     @State private var showingAdditiveDetail = false
     @State private var isReanalyzingTax = false
-    @State private var isGuessingPrice = false
-    @State private var showingPriceGuessAlert = false
-    @State private var priceGuessLocation = ""
-    @State private var priceGuessBrand = ""
-    @State private var priceGuessDetails = ""
+    @State private var showingPriceSearchAlert = false
+    @State private var priceSearchSpecification = ""
+    @State private var selectedWebsite = "Broulim's"
     @State private var priceSourceURL: String? = nil
-    @State private var showingUnableToDeterminePriceAlert = false
+    @State private var showingPriceSearchWebView = false
+    @State private var webViewSelectedPrice: Double? = nil
+    @State private var webViewSelectedItemName: String? = nil
+    @State private var showingTaxErrorAlert = false
+    @State private var showingPriceErrorAlert = false
+    @State private var currentErrorMessage = ""
     @State private var hasUnknownTax: Bool
     
     init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager) {
@@ -85,27 +88,18 @@ struct ItemEditView: View {
                         .disabled(isReanalyzingTax || name.isEmpty)
                     }
                     
-                    if isGuessingPrice {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Guessing price...")
-                                .foregroundColor(.secondary)
+                    Button("Search Price") {
+                        setupPriceSearch()
+                    }
+                    .foregroundColor(.purple)
+                    .disabled(name.isEmpty)
+                    
+                    if priceSourceURL != nil {
+                        Button("Click here to see price source") {
+                            openPriceSource()
                         }
-                    } else {
-                        Button("Guess Price") {
-                            setupPriceGuess()
-                        }
-                        .foregroundColor(.purple)
-                        .disabled(name.isEmpty || isGuessingPrice)
-                        
-                        if priceSourceURL != nil {
-                            Button("Click here to see price source") {
-                                openPriceSource()
-                            }
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
                     }
                 }
                 
@@ -207,21 +201,89 @@ struct ItemEditView: View {
             .sheet(isPresented: $showingAdditiveDetail) {
                 AdditiveDetailView(additives: item.additiveDetails, productName: item.name)
             }
-            .alert("Guess Price", isPresented: $showingPriceGuessAlert) {
-                TextField("Store name (e.g., Walmart, Target)", text: $priceGuessLocation)
-                TextField("Brand (e.g., Nike, Apple)", text: $priceGuessBrand)
-                TextField("Item details/specifics", text: $priceGuessDetails)
-                Button("Cancel", role: .cancel) { }
-                Button("Guess") {
-                    performPriceGuess()
+            .sheet(isPresented: $showingPriceSearchAlert) {
+                NavigationView {
+                    Form {
+                        Section(header: Text("Search Details")) {
+                            TextField("Item Name", text: .constant(name))
+                                .disabled(true)
+                                .foregroundColor(.secondary)
+                            
+                            TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
+                            
+                            Picker("Website", selection: $selectedWebsite) {
+                                Text("Broulim's").tag("Broulim's")
+                                Text("Walmart").tag("Walmart")
+                                Text("Target").tag("Target")
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                        }
+                    }
+                    .navigationTitle("Search Price")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Cancel") {
+                                showingPriceSearchAlert = false
+                            }
+                        }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Search") {
+                                showingPriceSearchAlert = false
+                                showingPriceSearchWebView = true
+                            }
+                        }
+                    }
                 }
-            } message: {
-                Text("Help AI estimate the price for \"\(name)\" by providing optional details. All fields are optional.")
             }
-            .alert("Unable to Determine Price", isPresented: $showingUnableToDeterminePriceAlert) {
+            .fullScreenCover(isPresented: $showingPriceSearchWebView) {
+                PriceSearchView(
+                    itemName: name,
+                    specification: priceSearchSpecification.isEmpty ? nil : priceSearchSpecification,
+                    website: selectedWebsite,
+                    selectedPrice: $webViewSelectedPrice,
+                    selectedItemName: $webViewSelectedItemName
+                )
+            }
+            .onChange(of: webViewSelectedPrice) { price in
+                if let price = price {
+                    // Dismiss the web view first
+                    showingPriceSearchWebView = false
+                    
+                    // Then update the price
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        costString = String(format: "%.2f", price)
+                        
+                        // Build the source URL for reference
+                        let searchTerm = priceSearchSpecification.isEmpty ? name : "\(name) \(priceSearchSpecification)"
+                        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
+                        
+                        switch selectedWebsite {
+                        case "Broulim's":
+                            priceSourceURL = "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
+                        case "Walmart":
+                            priceSourceURL = "https://www.walmart.com/search?q=\(encodedSearchTerm)"
+                        case "Target":
+                            priceSourceURL = "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
+                        default:
+                            priceSourceURL = nil
+                        }
+                        
+                        // Reset for next search
+                        webViewSelectedPrice = nil
+                        webViewSelectedItemName = nil
+                    }
+                }
+            }
+            .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
                 Button("OK") { }
             } message: {
-                Text("Sorry, we couldn't determine a price for this item. Please try entering a more specific item name or additional details.")
+                Text(currentErrorMessage)
+            }
+            .alert("Price Guess Error", isPresented: $showingPriceErrorAlert) {
+                Button("OK") { }
+            } message: {
+                Text(currentErrorMessage)
             }
         }
     }
@@ -264,74 +326,17 @@ struct ItemEditView: View {
             isReanalyzingTax = false
         } catch {
             isReanalyzingTax = false
-            print("Error reanalyzing taxes: \(error)")
+            currentErrorMessage = error.localizedDescription
+            showingTaxErrorAlert = true
         }
     }
     
-    private func setupPriceGuess() {
-        // Clear all fields - user will enter them
-        priceGuessLocation = ""
-        priceGuessBrand = ""
-        priceGuessDetails = ""
+    private func setupPriceSearch() {
+        priceSearchSpecification = ""
         priceSourceURL = nil
-        showingPriceGuessAlert = true
+        showingPriceSearchAlert = true
     }
     
-    private func performPriceGuess() {
-        guard !name.isEmpty else { return }
-        
-        isGuessingPrice = true
-        
-        // Get actual location for the AI
-        let actualLocationString: String? = {
-            guard let placemark = locationManager.placemark else { return nil }
-            
-            var components: [String] = []
-            
-            if let locality = placemark.locality {
-                components.append(locality)
-            }
-            if let county = placemark.subAdministrativeArea {
-                components.append("\(county) County")
-            }
-            if let state = placemark.administrativeArea {
-                components.append(state)
-            }
-            
-            return components.isEmpty ? nil : components.joined(separator: ", ")
-        }()
-        
-        Task {
-            do {
-                let storeName = priceGuessLocation.isEmpty ? nil : priceGuessLocation
-                let brand = priceGuessBrand.isEmpty ? nil : priceGuessBrand
-                let details = priceGuessDetails.isEmpty ? nil : priceGuessDetails
-                
-                let result = try await aiService.guessPrice(
-                    itemName: name,
-                    location: actualLocationString,
-                    storeName: storeName,
-                    brand: brand,
-                    additionalDetails: details
-                )
-                
-                DispatchQueue.main.async {
-                    if let estimatedPrice = result.price {
-                        self.costString = String(format: "%.2f", estimatedPrice)
-                        self.priceSourceURL = result.sourceURL
-                    } else {
-                        self.showingUnableToDeterminePriceAlert = true
-                    }
-                    self.isGuessingPrice = false
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isGuessingPrice = false
-                    print("Error guessing price: \(error)")
-                }
-            }
-        }
-    }
     
     private func openPriceSource() {
         guard let urlString = priceSourceURL,

@@ -5,29 +5,35 @@ struct AddItemView: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject var aiService: AIService
     @ObservedObject var settingsStore: SettingsStore
+    @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
     
     @State private var name = ""
     @State private var costString = ""
-    @State private var taxMode: TaxMode = .autoDetect
+    @State private var taxMode: TaxMode = .defaultMode
     @State private var customTaxRateString = "0.00"
     @State private var detectedTaxRate: Double? = nil
     @State private var isDetectingTax = false
     @State private var isAnalyzingAdditives = false
-    @State private var isGuessingPrice = false
-    @State private var showingPriceGuessAlert = false
-    @State private var priceGuessLocation = ""
-    @State private var priceGuessBrand = ""
-    @State private var priceGuessDetails = ""
+    @State private var showingPriceSearchAlert = false
+    @State private var priceSearchSpecification = ""
+    @State private var selectedWebsite = "Broulim's"
     @State private var priceSourceURL: String? = nil
-    @State private var showingUnableToDeterminePriceAlert = false
+    @State private var showingPriceSearchWebView = false
+    @State private var webViewSelectedPrice: Double? = nil
+    @State private var webViewSelectedItemName: String? = nil
+    @State private var showingTaxErrorAlert = false
+    @State private var showingAdditiveErrorAlert = false
+    @State private var showingPriceErrorAlert = false
+    @State private var currentErrorMessage = ""
     @State private var riskyAdditives = 0
     @State private var nonRiskyAdditives = 0
     @State private var additiveDetails: [AdditiveInfo] = []
     
     enum TaxMode: String, CaseIterable {
-        case autoDetect = "Auto Detect"
-        case customValue = "Custom Value"
+        case defaultMode = "Default"
+        case ai = "AI"
+        case customValue = "Custom"
         
         var id: String { self.rawValue }
     }
@@ -53,26 +59,7 @@ struct AddItemView: View {
                         .pickerStyle(MenuPickerStyle())
                         .disabled(isDetectingTax)
                         
-                        if taxMode == .customValue {
-                            HStack {
-                                TextField("0.00", text: $customTaxRateString)
-                                    .keyboardType(.decimalPad)
-                                Text("% Tax")
-                            }
-                        } else if isDetectingTax {
-                            HStack {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Detecting tax rate...")
-                                    .foregroundColor(.secondary)
-                            }
-                        } else if let detected = detectedTaxRate {
-                            HStack {
-                                Text("\(detected, specifier: "%.2f")% (Auto-detected)")
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                            }
-                        }
+                        taxModeView
                     }
                 }
                 
@@ -119,27 +106,34 @@ struct AddItemView: View {
                 }
                 
                 Section(header: Text("Actions")) {
-                    if isGuessingPrice {
+                    // Calculate taxes button - shows when AI tax detection is enabled
+                    if shouldDetectTaxRate() && !isDetectingTax {
+                        Button("Calculate Taxes") {
+                            detectTaxRate(andAddItem: false)
+                        }
+                        .foregroundColor(.green)
+                        .disabled(name.isEmpty)
+                    } else if isDetectingTax {
                         HStack {
                             ProgressView()
                                 .scaleEffect(0.8)
-                            Text("Guessing price...")
+                            Text("Calculating taxes...")
                                 .foregroundColor(.secondary)
                         }
-                    } else {
-                        Button("Guess Price") {
-                            setupPriceGuess()
+                    }
+                    
+                    Button("Search Price") {
+                        setupPriceSearch()
+                    }
+                    .foregroundColor(.purple)
+                    .disabled(name.isEmpty)
+                    
+                    if priceSourceURL != nil {
+                        Button("Click here to see price source") {
+                            openPriceSource()
                         }
-                        .foregroundColor(.purple)
-                        .disabled(name.isEmpty || isGuessingPrice)
-                        
-                        if priceSourceURL != nil {
-                            Button("Click here to see price source") {
-                                openPriceSource()
-                            }
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
                     }
                 }
                 
@@ -178,7 +172,7 @@ struct AddItemView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Add") {
-                        if taxMode == .autoDetect && detectedTaxRate == nil && !name.isEmpty {
+                        if shouldDetectTaxRate() {
                             detectTaxRate()
                         } else {
                             addItem()
@@ -187,28 +181,109 @@ struct AddItemView: View {
                     .disabled(costString.isEmpty || isDetectingTax)
                 }
             }
-            .alert("Guess Price", isPresented: $showingPriceGuessAlert) {
-                TextField("Store name (e.g., Walmart, Target)", text: $priceGuessLocation)
-                TextField("Brand (e.g., Nike, Apple)", text: $priceGuessBrand)
-                TextField("Item details/specifics", text: $priceGuessDetails)
-                Button("Cancel", role: .cancel) { }
-                Button("Guess") {
-                    performPriceGuess()
+            .sheet(isPresented: $showingPriceSearchAlert) {
+                NavigationView {
+                    Form {
+                        Section(header: Text("Search Details")) {
+                            TextField("Item Name", text: .constant(name))
+                                .disabled(true)
+                                .foregroundColor(.secondary)
+                            
+                            TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
+                            
+                            Picker("Website", selection: $selectedWebsite) {
+                                Text("Broulim's").tag("Broulim's")
+                                Text("Walmart").tag("Walmart")
+                                Text("Target").tag("Target")
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                        }
+                    }
+                    .navigationTitle("Search Price")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Cancel") {
+                                showingPriceSearchAlert = false
+                            }
+                        }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Search") {
+                                showingPriceSearchAlert = false
+                                showingPriceSearchWebView = true
+                            }
+                        }
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showingPriceSearchWebView) {
+                PriceSearchView(
+                    itemName: name,
+                    specification: priceSearchSpecification.isEmpty ? nil : priceSearchSpecification,
+                    website: selectedWebsite,
+                    selectedPrice: $webViewSelectedPrice,
+                    selectedItemName: $webViewSelectedItemName
+                )
+            }
+            .onChange(of: webViewSelectedPrice) { price in
+                if let price = price {
+                    // Dismiss the web view first
+                    showingPriceSearchWebView = false
+                    
+                    // Then update the price
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        costString = String(format: "%.2f", price)
+                        
+                        // Build the source URL for reference
+                        let searchTerm = priceSearchSpecification.isEmpty ? name : "\(name) \(priceSearchSpecification)"
+                        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
+                        
+                        switch selectedWebsite {
+                        case "Broulim's":
+                            priceSourceURL = "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
+                        case "Walmart":
+                            priceSourceURL = "https://www.walmart.com/search?q=\(encodedSearchTerm)"
+                        case "Target":
+                            priceSourceURL = "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
+                        default:
+                            priceSourceURL = nil
+                        }
+                        
+                        // Reset for next search
+                        webViewSelectedPrice = nil
+                        webViewSelectedItemName = nil
+                    }
+                }
+            }
+            .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
+                Button("OK") { 
+                    addItem() // Still proceed with adding the item
                 }
             } message: {
-                Text("Help AI estimate the price for \"\(name)\" by providing optional details. All fields are optional.")
+                Text(currentErrorMessage)
             }
-            .alert("Unable to Determine Price", isPresented: $showingUnableToDeterminePriceAlert) {
+            .alert("Additive Analysis Error", isPresented: $showingAdditiveErrorAlert) {
                 Button("OK") { }
             } message: {
-                Text("Sorry, we couldn't determine a price for this item. Please try entering a more specific item name or additional details.")
+                Text(currentErrorMessage)
+            }
+            .alert("Price Guess Error", isPresented: $showingPriceErrorAlert) {
+                Button("OK") { }
+            } message: {
+                Text(currentErrorMessage)
             }
         }
     }
     
     private func getCurrentTaxRate() -> Double {
         switch taxMode {
-        case .autoDetect:
+        case .defaultMode:
+            if settingsService.useManualTaxRate {
+                return settingsService.manualTaxRate
+            } else {
+                return detectedTaxRate ?? 0.0
+            }
+        case .ai:
             return detectedTaxRate ?? 0.0
         case .customValue:
             return Double(customTaxRateString) ?? 0.0
@@ -237,7 +312,7 @@ struct AddItemView: View {
         return false
     }
     
-    private func detectTaxRate() {
+    private func detectTaxRate(andAddItem: Bool = true) {
         isDetectingTax = true
         
         let locationString: String? = {
@@ -265,21 +340,49 @@ struct AddItemView: View {
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
                     self.detectedTaxRate = detectedTaxRate
-                    self.addItem()
+                    if andAddItem {
+                        self.addItem()
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
                     self.detectedTaxRate = nil
-                    self.addItem()
+                    self.currentErrorMessage = error.localizedDescription
+                    self.showingTaxErrorAlert = true
+                    if andAddItem {
+                        // Still proceed with adding the item even if tax detection failed
+                        self.addItem()
+                    }
                 }
             }
         }
     }
     
+    private func shouldDetectTaxRate() -> Bool {
+        switch taxMode {
+        case .defaultMode:
+            return !settingsService.useManualTaxRate && detectedTaxRate == nil && !name.isEmpty
+        case .ai:
+            return detectedTaxRate == nil && !name.isEmpty
+        case .customValue:
+            return false
+        }
+    }
+    
     private func addItem() {
         let finalTaxRate = getCurrentTaxRate()
-        let hasUnknownTax = (taxMode == .autoDetect && detectedTaxRate == nil)
+        let hasUnknownTax: Bool = {
+            switch taxMode {
+            case .defaultMode:
+                return !settingsService.useManualTaxRate && detectedTaxRate == nil
+            case .ai:
+                return detectedTaxRate == nil
+            case .customValue:
+                return false
+            }
+        }()
+        
         let item = ShoppingItem(
             name: name.isEmpty ? "Unnamed Item" : name,
             cost: Double(costString) ?? 0,
@@ -315,83 +418,70 @@ struct AddItemView: View {
             } catch {
                 DispatchQueue.main.async {
                     self.isAnalyzingAdditives = false
-                    print("Error analyzing product for additives: \(error)")
+                    self.currentErrorMessage = error.localizedDescription
+                    self.showingAdditiveErrorAlert = true
                 }
             }
         }
     }
     
-    private func setupPriceGuess() {
-        // Clear all fields - user will enter them
-        priceGuessLocation = ""
-        priceGuessBrand = ""
-        priceGuessDetails = ""
+    private func setupPriceSearch() {
+        priceSearchSpecification = ""
         priceSourceURL = nil
-        showingPriceGuessAlert = true
+        showingPriceSearchAlert = true
     }
     
-    private func performPriceGuess() {
-        guard !name.isEmpty else { return }
-        
-        print("🎯 AddItemView: Starting price guess for '\(name)'")
-        isGuessingPrice = true
-        
-        // Get actual location for the AI
-        let actualLocationString: String? = {
-            guard let placemark = locationManager.placemark else { return nil }
-            
-            var components: [String] = []
-            
-            if let locality = placemark.locality {
-                components.append(locality)
-            }
-            if let county = placemark.subAdministrativeArea {
-                components.append("\(county) County")
-            }
-            if let state = placemark.administrativeArea {
-                components.append(state)
-            }
-            
-            return components.isEmpty ? nil : components.joined(separator: ", ")
-        }()
-        
-        Task {
-            do {
-                let storeName = priceGuessLocation.isEmpty ? nil : priceGuessLocation
-                let brand = priceGuessBrand.isEmpty ? nil : priceGuessBrand
-                let details = priceGuessDetails.isEmpty ? nil : priceGuessDetails
-                
-                let result = try await aiService.guessPrice(
-                    itemName: name,
-                    location: actualLocationString,
-                    storeName: storeName,
-                    brand: brand,
-                    additionalDetails: details
-                )
-                
-                DispatchQueue.main.async {
-                    if let estimatedPrice = result.price {
-                        print("✅ AddItemView: Price updated to \(estimatedPrice)")
-                        self.costString = String(format: "%.2f", estimatedPrice)
-                        self.priceSourceURL = result.sourceURL
-                    } else {
-                        print("❌ AddItemView: No price returned from API")
-                        self.showingUnableToDeterminePriceAlert = true
-                    }
-                    self.isGuessingPrice = false
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isGuessingPrice = false
-                    print("Error guessing price: \(error)")
-                }
-            }
-        }
-    }
     
     private func openPriceSource() {
         guard let urlString = priceSourceURL,
               let url = URL(string: urlString) else { return }
         UIApplication.shared.open(url)
+    }
+    
+    @ViewBuilder
+    private var taxModeView: some View {
+        if taxMode == .customValue {
+            HStack {
+                TextField("0.00", text: $customTaxRateString)
+                    .keyboardType(.decimalPad)
+                Text("% Tax")
+            }
+        } else if taxMode == .defaultMode {
+            if settingsService.useManualTaxRate {
+                HStack {
+                    Text("\(settingsService.manualTaxRate, specifier: "%.2f")% (Manual Setting)")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else if isDetectingTax {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Detecting tax rate...")
+                        .foregroundColor(.secondary)
+                }
+            } else if let detected = detectedTaxRate {
+                HStack {
+                    Text("\(detected, specifier: "%.2f")% (AI-detected)")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        } else if taxMode == .ai {
+            if isDetectingTax {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Detecting tax rate...")
+                        .foregroundColor(.secondary)
+                }
+            } else if let detected = detectedTaxRate {
+                HStack {
+                    Text("\(detected, specifier: "%.2f")% (AI-detected)")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        }
     }
 }

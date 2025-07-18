@@ -87,7 +87,7 @@ struct ContentView: View {
                 CameraView(selectedImage: $selectedImage)
             }
             .sheet(isPresented: $showingAddItem) {
-                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsStore: settingsStore)
+                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsStore: settingsStore, settingsService: settingsService)
             }
             .sheet(item: $editingItem) { item in
                 ItemEditView(
@@ -103,6 +103,7 @@ struct ContentView: View {
                         store: store, 
                         settingsStore: settingsStore, 
                         aiService: aiService,
+                        settingsService: settingsService,
                         onRetakePhoto: {
                             // Retake photo callback
                             showingVerifyItem = false
@@ -150,6 +151,12 @@ struct ContentView: View {
                         }
                     }
                     Spacer()
+                    
+                    if settingsService.useManualTaxRate {
+                        Text("General state tax: \(settingsService.manualTaxRate, specifier: "%.1f")%")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)

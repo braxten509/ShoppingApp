@@ -347,7 +347,8 @@ class OpenAIService: ObservableObject {
                         price: result.price,
                         taxRate: detectedTaxRate,
                         taxDescription: location != nil ? "\(detectedTaxRate)% (Auto-detected)" : "\(detectedTaxRate)% (Default rate)",
-                        ingredients: result.ingredients
+                        ingredients: result.ingredients,
+                        analysisIssues: result.analysisIssues
                     )
                 }
             }

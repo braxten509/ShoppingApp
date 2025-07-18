@@ -53,6 +53,18 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var stores: [Store] {
+        didSet {
+            saveStores()
+        }
+    }
+    
+    @Published var defaultStoreId: String? {
+        didSet {
+            UserDefaults.standard.set(defaultStoreId, forKey: "defaultStoreId")
+        }
+    }
+    
 
     let aiModels = [
         // OpenAI Models
@@ -66,7 +78,7 @@ class SettingsService: ObservableObject {
     init() {
         self.useAIModels = UserDefaults.standard.bool(forKey: "useAIModels")
         self.selectedModelForTaxRate = UserDefaults.standard.string(forKey: "selectedModelForTaxRate") ?? "sonar-pro"
-        self.selectedModelForPhotoPrice = UserDefaults.standard.string(forKey: "selectedModelForPhotoPrice") ?? "sonar-pro"
+        self.selectedModelForPhotoPrice = UserDefaults.standard.string(forKey: "selectedModelForPhotoPrice") ?? "gpt-4o-mini"
         self.selectedModelForTagIdentification = UserDefaults.standard.string(forKey: "selectedModelForTagIdentification") ?? "sonar-pro"
         self.openAIAPIKey = UserDefaults.standard.string(forKey: "openAIAPIKey") ?? ""
         self.perplexityAPIKey = UserDefaults.standard.string(forKey: "perplexityAPIKey") ?? ""
@@ -74,6 +86,9 @@ class SettingsService: ObservableObject {
         // Set a reasonable default tax rate if none exists (6% is a common US average)
         let storedTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
         self.manualTaxRate = storedTaxRate > 0 ? storedTaxRate : 6.0
+        self.defaultStoreId = UserDefaults.standard.string(forKey: "defaultStoreId")
+        self.stores = []
+        loadStores()
     }
     
     
@@ -113,7 +128,70 @@ class SettingsService: ObservableObject {
     
     func resetAllModels() {
         selectedModelForTaxRate = "sonar-pro"
-        selectedModelForPhotoPrice = "sonar-pro"
+        selectedModelForPhotoPrice = "gpt-4o-mini"
         selectedModelForTagIdentification = "sonar-pro"
+    }
+    
+    // MARK: - Store Management
+    
+    private func saveStores() {
+        if let encoded = try? JSONEncoder().encode(stores) {
+            UserDefaults.standard.set(encoded, forKey: "stores")
+        }
+    }
+    
+    private func loadStores() {
+        if let data = UserDefaults.standard.data(forKey: "stores"),
+           let decoded = try? JSONDecoder().decode([Store].self, from: data) {
+            stores = decoded
+        } else {
+            // Load default stores if none exist
+            stores = Store.defaultStores
+        }
+    }
+    
+    func addStore(name: String, url: String) {
+        let newStore = Store(name: name, url: url)
+        stores.append(newStore)
+    }
+    
+    func deleteStore(at index: Int) {
+        stores.remove(at: index)
+    }
+    
+    func updateStore(at index: Int, name: String, url: String) {
+        stores[index].name = name
+        stores[index].url = url
+    }
+    
+    func resetToDefaultStores() {
+        stores = Store.defaultStores
+    }
+    
+    func buildSearchURL(for storeName: String, searchTerm: String) -> String? {
+        guard let store = stores.first(where: { $0.name == storeName }) else {
+            return nil
+        }
+        return store.url.replacingOccurrences(of: "%s", with: searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm)
+    }
+    
+    func setDefaultStore(_ store: Store) {
+        defaultStoreId = store.id.uuidString
+    }
+    
+    func getDefaultStore() -> Store? {
+        guard let defaultId = defaultStoreId,
+              let uuid = UUID(uuidString: defaultId) else {
+            return stores.first
+        }
+        return stores.first(where: { $0.id == uuid }) ?? stores.first
+    }
+    
+    func isDefaultStore(_ store: Store) -> Bool {
+        guard let defaultId = defaultStoreId,
+              let uuid = UUID(uuidString: defaultId) else {
+            return stores.first?.id == store.id
+        }
+        return store.id.uuidString == defaultId
     }
 }

@@ -58,6 +58,25 @@ struct SettingsView: View {
                             Spacer()
                         }
                     }
+                    
+                    NavigationLink(destination: StoreManagementView(settingsService: settingsService)) {
+                        HStack {
+                            Image(systemName: "storefront")
+                                .foregroundColor(.orange)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Store Management")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("Configure stores for price search")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            
+                            Spacer()
+                        }
+                    }
                 } header: {
                     Text("Configuration")
                 }

@@ -4,6 +4,7 @@ struct ItemEditView: View {
     @Binding var item: ShoppingItem
     @ObservedObject var aiService: AIService
     @ObservedObject var locationManager: LocationManager
+    @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
     
     @State private var name: String
@@ -14,7 +15,7 @@ struct ItemEditView: View {
     @State private var isReanalyzingTax = false
     @State private var showingPriceSearchAlert = false
     @State private var priceSearchSpecification = ""
-    @State private var selectedWebsite = "Broulim's"
+    @State private var selectedWebsite = ""
     @State private var priceSourceURL: String? = nil
     @State private var showingPriceSearchWebView = false
     @State private var webViewSelectedPrice: Double? = nil
@@ -28,10 +29,11 @@ struct ItemEditView: View {
     @State private var measurementQuantityString: String
     @State private var selectedMeasurementUnit: MeasurementUnit
     
-    init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager) {
+    init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager, settingsService: SettingsService) {
         self._item = item
         self.aiService = aiService
         self.locationManager = locationManager
+        self.settingsService = settingsService
         self._name = State(initialValue: item.wrappedValue.name)
         self._costString = State(initialValue: String(format: "%.2f", item.wrappedValue.cost))
         self._quantityString = State(initialValue: String(item.wrappedValue.quantity))
@@ -255,9 +257,9 @@ struct ItemEditView: View {
                             TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
                             
                             Picker("Website", selection: $selectedWebsite) {
-                                Text("Broulim's").tag("Broulim's")
-                                Text("Walmart").tag("Walmart")
-                                Text("Target").tag("Target")
+                                ForEach(settingsService.stores, id: \.id) { store in
+                                    Text(store.name).tag(store.name)
+                                }
                             }
                             .pickerStyle(MenuPickerStyle())
                         }
@@ -285,7 +287,8 @@ struct ItemEditView: View {
                     specification: priceSearchSpecification.isEmpty ? nil : priceSearchSpecification,
                     website: selectedWebsite,
                     selectedPrice: $webViewSelectedPrice,
-                    selectedItemName: $webViewSelectedItemName
+                    selectedItemName: $webViewSelectedItemName,
+                    settingsService: settingsService
                 )
             }
             .onChange(of: webViewSelectedPrice) { price in
@@ -299,18 +302,7 @@ struct ItemEditView: View {
                         
                         // Build the source URL for reference
                         let searchTerm = priceSearchSpecification.isEmpty ? name : "\(name) \(priceSearchSpecification)"
-                        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
-                        
-                        switch selectedWebsite {
-                        case "Broulim's":
-                            priceSourceURL = "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
-                        case "Walmart":
-                            priceSourceURL = "https://www.walmart.com/search?q=\(encodedSearchTerm)"
-                        case "Target":
-                            priceSourceURL = "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
-                        default:
-                            priceSourceURL = nil
-                        }
+                        priceSourceURL = settingsService.buildSearchURL(for: selectedWebsite, searchTerm: searchTerm)
                         
                         // Reset for next search
                         webViewSelectedPrice = nil
@@ -320,6 +312,15 @@ struct ItemEditView: View {
             }
             .onChange(of: measurementQuantityString) { _, newValue in
                 measurementQuantity = Double(newValue) ?? 1.0
+            }
+            .onAppear {
+                if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
+                    if let defaultStore = settingsService.getDefaultStore() {
+                        selectedWebsite = defaultStore.name
+                    } else {
+                        selectedWebsite = settingsService.stores.first!.name
+                    }
+                }
             }
             .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
                 Button("OK") { }

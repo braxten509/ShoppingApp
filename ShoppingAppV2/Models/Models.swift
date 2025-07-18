@@ -1,6 +1,24 @@
 import Foundation
 import CoreLocation
 
+struct Store: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var url: String
+    
+    init(name: String, url: String) {
+        self.id = UUID()
+        self.name = name
+        self.url = url
+    }
+    
+    static let defaultStores: [Store] = [
+        Store(name: "Broulim's", url: "https://shop.rosieapp.com/broulims_rexburg/search/%s"),
+        Store(name: "Walmart", url: "https://www.walmart.com/search?q=%s"),
+        Store(name: "Target", url: "https://www.target.com/s?searchTerm=%s")
+    ]
+}
+
 struct FoodAdditives {
     static let riskyAdditives = [
         "Red Dye #40", "Red 40", "Allura Red AC", "E129",

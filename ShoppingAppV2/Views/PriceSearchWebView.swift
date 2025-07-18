@@ -377,25 +377,15 @@ struct PriceSearchView: View {
     let website: String
     @Binding var selectedPrice: Double?
     @Binding var selectedItemName: String?
+    @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
     @State private var showingHelpAlert = false
     
     private var searchURL: URL? {
         let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
-        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
-        
-        let urlString: String
-        switch website {
-        case "Broulim's":
-            urlString = "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
-        case "Walmart":
-            urlString = "https://www.walmart.com/search?q=\(encodedSearchTerm)"
-        case "Target":
-            urlString = "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
-        default:
-            urlString = ""
+        guard let urlString = settingsService.buildSearchURL(for: website, searchTerm: searchTerm) else {
+            return nil
         }
-        
         return URL(string: urlString)
     }
     

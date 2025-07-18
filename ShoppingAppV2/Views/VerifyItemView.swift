@@ -28,7 +28,7 @@ struct VerifyItemView: View {
     @State private var isDetectingTax = false
     @State private var showingPriceSearchAlert = false
     @State private var priceSearchSpecification = ""
-    @State private var selectedWebsite = "Broulim's"
+    @State private var selectedWebsite = ""
     @State private var priceSourceURL: String? = nil
     @State private var showingPriceSearchWebView = false
     @State private var webViewSelectedPrice: Double? = nil
@@ -50,6 +50,14 @@ struct VerifyItemView: View {
         case customValue = "Custom"
         
         var id: String { self.rawValue }
+    }
+    
+    private var actualCost: Double {
+        let baseCost = Double(costString) ?? 0
+        if isPriceByMeasurement {
+            return baseCost * measurementQuantity
+        }
+        return baseCost
     }
 
     init(extractedInfo: PriceTagInfo, store: ShoppingListStore, aiService: AIService, settingsService: SettingsService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil) {
@@ -205,14 +213,14 @@ struct VerifyItemView: View {
                     HStack {
                         Text("Subtotal:")
                         Spacer()
-                        Text("$\(Double(costString) ?? 0, specifier: "%.2f")")
+                        Text("$\(actualCost, specifier: "%.2f")")
                     }
                     
                     HStack {
                         Text("Tax:")
                         Spacer()
                         let taxRate = getCurrentTaxRate()
-                        Text("$\((Double(costString) ?? 0) * taxRate / 100, specifier: "%.2f")")
+                        Text("$\(actualCost * taxRate / 100, specifier: "%.2f")")
                     }
                     
                     HStack {
@@ -220,7 +228,7 @@ struct VerifyItemView: View {
                             .fontWeight(.bold)
                         Spacer()
                         let taxRate = getCurrentTaxRate()
-                        Text("$\((Double(costString) ?? 0) + (Double(costString) ?? 0) * taxRate / 100, specifier: "%.2f")")
+                        Text("$\(actualCost + actualCost * taxRate / 100, specifier: "%.2f")")
                             .fontWeight(.bold)
                     }
                 }
@@ -256,9 +264,9 @@ struct VerifyItemView: View {
                             TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
                             
                             Picker("Website", selection: $selectedWebsite) {
-                                Text("Broulim's").tag("Broulim's")
-                                Text("Walmart").tag("Walmart")
-                                Text("Target").tag("Target")
+                                ForEach(settingsService.stores, id: \.id) { store in
+                                    Text(store.name).tag(store.name)
+                                }
                             }
                             .pickerStyle(MenuPickerStyle())
                         }
@@ -286,7 +294,8 @@ struct VerifyItemView: View {
                     specification: priceSearchSpecification.isEmpty ? nil : priceSearchSpecification,
                     website: selectedWebsite,
                     selectedPrice: $webViewSelectedPrice,
-                    selectedItemName: $webViewSelectedItemName
+                    selectedItemName: $webViewSelectedItemName,
+                    settingsService: settingsService
                 )
             }
             .onChange(of: webViewSelectedPrice) { price in
@@ -300,18 +309,7 @@ struct VerifyItemView: View {
                         
                         // Build the source URL for reference
                         let searchTerm = priceSearchSpecification.isEmpty ? name : "\(name) \(priceSearchSpecification)"
-                        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
-                        
-                        switch selectedWebsite {
-                        case "Broulim's":
-                            priceSourceURL = "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
-                        case "Walmart":
-                            priceSourceURL = "https://www.walmart.com/search?q=\(encodedSearchTerm)"
-                        case "Target":
-                            priceSourceURL = "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
-                        default:
-                            priceSourceURL = nil
-                        }
+                        priceSourceURL = settingsService.buildSearchURL(for: selectedWebsite, searchTerm: searchTerm)
                         
                         // Update analysis issues
                         dynamicAnalysisIssues.removeAll { $0.contains("price search") }
@@ -326,6 +324,15 @@ struct VerifyItemView: View {
             }
             .onChange(of: measurementQuantityString) { _, newValue in
                 measurementQuantity = Double(newValue) ?? 1.0
+            }
+            .onAppear {
+                if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
+                    if let defaultStore = settingsService.getDefaultStore() {
+                        selectedWebsite = defaultStore.name
+                    } else {
+                        selectedWebsite = settingsService.stores.first!.name
+                    }
+                }
             }
         }
     }

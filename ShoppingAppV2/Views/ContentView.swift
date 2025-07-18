@@ -92,7 +92,8 @@ struct ContentView: View {
                 ItemEditView(
                     item: bindingForItem(item),
                     aiService: aiService,
-                    locationManager: locationManager
+                    locationManager: locationManager,
+                    settingsService: settingsService
                 )
             }
             .sheet(isPresented: $showingVerifyItem) {

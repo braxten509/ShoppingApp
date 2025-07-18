@@ -263,18 +263,7 @@ class AIService: ObservableObject {
     
     private func buildSearchURL(for website: String, itemName: String, specification: String?) -> String {
         let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
-        let encodedSearchTerm = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm
-        
-        switch website {
-        case "Broulim's":
-            return "https://shop.rosieapp.com/broulims_rexburg/search/\(encodedSearchTerm)"
-        case "Walmart":
-            return "https://www.walmart.com/search?q=\(encodedSearchTerm)"
-        case "Target":
-            return "https://www.target.com/s?searchTerm=\(encodedSearchTerm)"
-        default:
-            return ""
-        }
+        return settingsService.buildSearchURL(for: website, searchTerm: searchTerm) ?? ""
     }
     
     func guessPrice(itemName: String, location: String?, storeName: String? = nil, brand: String? = nil, additionalDetails: String?) async throws -> (price: Double?, sourceURL: String?) {

@@ -18,7 +18,7 @@ struct SettingsView: View {
     @State private var showingPromptCustomization = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section {
                     NavigationLink(destination: APIKeysView(settingsService: settingsService)) {

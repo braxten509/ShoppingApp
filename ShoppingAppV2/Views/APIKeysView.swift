@@ -9,6 +9,12 @@ struct APIKeysView: View {
     @State private var showingDeleteConfirmation = false
     @State private var showingDeletePerplexityConfirmation = false
     
+    // WebView states
+    @State private var showingOpenAIKeysWeb = false
+    @State private var showingOpenAIBillingWeb = false
+    @State private var showingPerplexityKeysWeb = false
+    @State private var showingPerplexityBillingWeb = false
+    
     var body: some View {
         List {
             Section {
@@ -38,18 +44,37 @@ struct APIKeysView: View {
                     }
                 }
                 
-                Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
+                Button(action: {
+                    showingOpenAIKeysWeb = true
+                }) {
                     HStack {
                         Image(systemName: "key.fill")
                             .foregroundColor(.green)
                         Text("Get API Key from OpenAI")
                             .foregroundColor(.blue)
                         Spacer()
-                        Image(systemName: "arrow.up.right.square")
+                        Image(systemName: "globe")
                             .foregroundColor(.blue)
                             .font(.caption)
                     }
                 }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: {
+                    showingOpenAIBillingWeb = true
+                }) {
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundColor(.orange)
+                        Text("View OpenAI Billing")
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Image(systemName: "globe")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             } header: {
                 Text("OpenAI Configuration")
             }
@@ -81,18 +106,37 @@ struct APIKeysView: View {
                     }
                 }
                 
-                Link(destination: URL(string: "https://www.perplexity.ai/settings/api")!) {
+                Button(action: {
+                    showingPerplexityKeysWeb = true
+                }) {
                     HStack {
                         Image(systemName: "key.fill")
                             .foregroundColor(.purple)
                         Text("Get API Key from Perplexity")
                             .foregroundColor(.blue)
                         Spacer()
-                        Image(systemName: "arrow.up.right.square")
+                        Image(systemName: "globe")
                             .foregroundColor(.blue)
                             .font(.caption)
                     }
                 }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: {
+                    showingPerplexityBillingWeb = true
+                }) {
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundColor(.orange)
+                        Text("View Perplexity Billing")
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Image(systemName: "globe")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             } header: {
                 Text("Perplexity Configuration")
             }
@@ -132,6 +176,34 @@ struct APIKeysView: View {
             }
         } message: {
             Text("Are you sure you want to delete your Perplexity API key? You'll need to enter it again to use price search features.")
+        }
+        .sheet(isPresented: $showingOpenAIKeysWeb) {
+            SecureWebViewSheet(
+                url: URL(string: "https://platform.openai.com/api-keys")!,
+                title: "OpenAI API Keys",
+                isPresented: $showingOpenAIKeysWeb
+            )
+        }
+        .sheet(isPresented: $showingOpenAIBillingWeb) {
+            SecureWebViewSheet(
+                url: URL(string: "https://platform.openai.com/account/billing/overview")!,
+                title: "OpenAI Billing",
+                isPresented: $showingOpenAIBillingWeb
+            )
+        }
+        .sheet(isPresented: $showingPerplexityKeysWeb) {
+            SecureWebViewSheet(
+                url: URL(string: "https://www.perplexity.ai/account/api/keys")!,
+                title: "Perplexity API Keys",
+                isPresented: $showingPerplexityKeysWeb
+            )
+        }
+        .sheet(isPresented: $showingPerplexityBillingWeb) {
+            SecureWebViewSheet(
+                url: URL(string: "https://www.perplexity.ai/account/api/billing")!,
+                title: "Perplexity API Billing",
+                isPresented: $showingPerplexityBillingWeb
+            )
         }
     }
 }

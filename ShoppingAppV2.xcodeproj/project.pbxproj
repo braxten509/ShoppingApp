@@ -401,6 +401,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to scan price tags and extract item information.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "This app uses Face ID to secure access to API key management and billing information, protecting your sensitive account data.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to estimate local tax rates for better price calculations.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -431,6 +432,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to scan price tags and extract item information.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "This app uses Face ID to secure access to API key management and billing information, protecting your sensitive account data.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to estimate local tax rates for better price calculations.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

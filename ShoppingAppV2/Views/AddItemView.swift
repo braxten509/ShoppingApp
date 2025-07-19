@@ -65,246 +65,324 @@ struct AddItemView: View {
     
     var body: some View {
         NavigationView {
-            Form {
-                Section(header: Text("Item Details")) {
-                    TextField("Item Name", text: $name)
-                    
-                    HStack {
-                        Text("$")
-                        TextField("0.00", text: $costString)
-                            .keyboardType(.decimalPad)
-                        
-                        Button(action: {
-                            setupPriceSearch()
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(name.isEmpty ? .gray : .purple)
-                        }
-                        .disabled(name.isEmpty)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Picker("Tax Mode", selection: $taxMode) {
-                            ForEach(TaxMode.allCases, id: \.id) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                        .disabled(isDetectingTax)
-                        
-                        taxModeView
-                    }
+            formContent
+                .navigationTitle("Add Item")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    toolbarItems
                 }
-                
-                Section(header: Text("Price by Measurement")) {
-                    Toggle("Price by Measurement", isOn: $isPriceByMeasurement)
-                    
-                    if isPriceByMeasurement {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Base price is per unit of measurement")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            HStack {
-                                TextField("Quantity", text: $measurementQuantityString)
-                                    .keyboardType(.decimalPad)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .frame(width: 80)
-                                
-                                Text(selectedMeasurementUnit.displayText(for: Double(measurementQuantityString) ?? 1.0))
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 60, alignment: .leading)
-                                
-                                Picker("", selection: $selectedMeasurementUnit) {
-                                    ForEach(MeasurementUnit.allCases, id: \.self) { unit in
-                                        Text(unit.displayName).tag(unit)
-                                    }
-                                }
-                                .pickerStyle(MenuPickerStyle())
-                                .labelsHidden()
-                            }
-                            
-                            if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
-                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.singularForm))")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
-                            }
-                        }
-                    }
+                .sheet(isPresented: $showingPriceSearchAlert) {
+                    priceSearchSheet
                 }
-                
-                Section(header: Text("Actions")) {
-                    // Calculate taxes button - shows when AI tax detection is enabled
-                    if shouldDetectTaxRate() && !isDetectingTax {
-                        Button("Calculate Taxes") {
-                            detectTaxRate(andAddItem: false)
-                        }
-                        .foregroundColor(.green)
-                        .disabled(name.isEmpty)
-                    } else if isDetectingTax {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Calculating taxes...")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    
+                .fullScreenCover(isPresented: $showingPriceSearchWebView) {
+                    priceSearchWebView
                 }
-                
-                Section(header: Text("Preview")) {
-                    HStack {
-                        Text("Subtotal:")
-                        Spacer()
-                        Text("$\(actualCost, specifier: "%.2f")")
+                .onChange(of: webViewSelectedPrice) { _, price in
+                    handlePriceSelection(price)
+                }
+                .onChange(of: measurementQuantityString) { _, newValue in
+                    measurementQuantity = Double(newValue) ?? 1.0
+                }
+                .onAppear {
+                    setupInitialValues()
+                }
+                .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
+                    Button("OK") { 
+                        addItem()
                     }
-                    
-                    HStack {
-                        Text("Tax:")
-                        Spacer()
-                        let taxRate = getCurrentTaxRate()
-                        Text("$\(actualCost * taxRate / 100, specifier: "%.2f")")
-                    }
-                    
-                    HStack {
-                        Text("Total:")
-                            .fontWeight(.bold)
-                        Spacer()
-                        let taxRate = getCurrentTaxRate()
-                        Text("$\(actualCost + actualCost * taxRate / 100, specifier: "%.2f")")
-                            .fontWeight(.bold)
-                    }
+                } message: {
+                    Text(currentErrorMessage)
+                }
+                .alert("Additive Analysis Error", isPresented: $showingAdditiveErrorAlert) {
+                    Button("OK") { }
+                } message: {
+                    Text(currentErrorMessage)
+                }
+                .alert("Price Guess Error", isPresented: $showingPriceErrorAlert) {
+                    Button("OK") { }
+                } message: {
+                    Text(currentErrorMessage)
+                }
+        }
+    }
+    
+    @ViewBuilder
+    private var formContent: some View {
+        Form {
+            itemDetailsSection
+            measurementSection
+            actionsSection
+            previewSection
+        }
+    }
+    
+    @ViewBuilder
+    private var itemDetailsSection: some View {
+        Section(header: Text("Item Details")) {
+            TextField("Item Name", text: $name)
+            
+            priceInputRow
+            
+            taxModeSection
+        }
+    }
+    
+    @ViewBuilder
+    private var priceInputRow: some View {
+        HStack {
+            Text("$")
+            TextField("0.00", text: $costString)
+                .keyboardType(.decimalPad)
+            
+            Button(action: {
+                setupPriceSearch()
+            }) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(name.isEmpty ? .gray : .purple)
+            }
+            .disabled(name.isEmpty)
+        }
+    }
+    
+    @ViewBuilder
+    private var taxModeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Tax Mode", selection: $taxMode) {
+                ForEach(TaxMode.allCases, id: \.id) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
             }
-            .navigationTitle("Add Item")
+            .pickerStyle(MenuPickerStyle())
+            .disabled(isDetectingTax)
+            
+            taxModeView
+        }
+    }
+    
+    @ViewBuilder
+    private var measurementSection: some View {
+        Section(header: Text("Price by Measurement")) {
+            Toggle("Price by Measurement", isOn: $isPriceByMeasurement)
+            
+            if isPriceByMeasurement {
+                measurementDetails
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var measurementDetails: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Base price is per unit of measurement")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            measurementInputRow
+            
+            measurementTotal
+        }
+    }
+    
+    @ViewBuilder
+    private var measurementInputRow: some View {
+        HStack {
+            TextField("Quantity", text: $measurementQuantityString)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .frame(width: 80)
+            
+            Text(selectedMeasurementUnit.displayText(for: Double(measurementQuantityString) ?? 1.0))
+                .foregroundColor(.secondary)
+                .frame(width: 60, alignment: .leading)
+            
+            Picker("", selection: $selectedMeasurementUnit) {
+                ForEach(MeasurementUnit.allCases, id: \.self) { unit in
+                    Text(unit.displayName).tag(unit)
+                }
+            }
+            .pickerStyle(MenuPickerStyle())
+            .labelsHidden()
+        }
+    }
+    
+    @ViewBuilder
+    private var measurementTotal: some View {
+        if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
+            let totalCost = cost * quantity
+            Text("Total: $\(String(format: "%.2f", totalCost)) ($\(String(format: "%.2f", cost)) per \(selectedMeasurementUnit.singularForm))")
+                .font(.caption)
+                .foregroundColor(.green)
+        }
+    }
+    
+    @ViewBuilder
+    private var actionsSection: some View {
+        Section(header: Text("Actions")) {
+            if shouldDetectTaxRate() && !isDetectingTax {
+                Button("Calculate Taxes") {
+                    detectTaxRate(andAddItem: false)
+                }
+                .foregroundColor(.green)
+                .disabled(name.isEmpty)
+            } else if isDetectingTax {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Calculating taxes...")
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var previewSection: some View {
+        Section(header: Text("Preview")) {
+            subtotalRow
+            taxRow
+            totalRow
+        }
+    }
+    
+    @ViewBuilder
+    private var subtotalRow: some View {
+        HStack {
+            Text("Subtotal:")
+            Spacer()
+            Text("$\(actualCost, specifier: "%.2f")")
+        }
+    }
+    
+    @ViewBuilder
+    private var taxRow: some View {
+        HStack {
+            Text("Tax:")
+            Spacer()
+            let taxRate = getCurrentTaxRate()
+            let taxAmount = actualCost * taxRate / 100
+            Text("$\(taxAmount, specifier: "%.2f")")
+        }
+    }
+    
+    @ViewBuilder
+    private var totalRow: some View {
+        HStack {
+            Text("Total:")
+                .fontWeight(.bold)
+            Spacer()
+            let taxRate = getCurrentTaxRate()
+            let totalAmount = actualCost + actualCost * taxRate / 100
+            Text("$\(totalAmount, specifier: "%.2f")")
+                .fontWeight(.bold)
+        }
+    }
+    
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button("Cancel") {
+                presentationMode.wrappedValue.dismiss()
+            }
+        }
+        
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Add") {
+                if shouldDetectTaxRate() {
+                    detectTaxRate()
+                } else {
+                    addItem()
+                }
+            }
+            .disabled(costString.isEmpty || isDetectingTax)
+        }
+        
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done") {
+                UIApplication.shared.endEditing()
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var priceSearchSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Search Details")) {
+                    TextField("Item Name", text: .constant(name))
+                        .disabled(true)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
+                    
+                    Picker("Website", selection: $selectedWebsite) {
+                        ForEach(settingsService.stores, id: \.id) { store in
+                            Text(store.name).tag(store.name)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                }
+            }
+            .navigationTitle("Search Price")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
+                        showingPriceSearchAlert = false
                     }
                 }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        if shouldDetectTaxRate() {
-                            detectTaxRate()
-                        } else {
-                            addItem()
-                        }
-                    }
-                    .disabled(costString.isEmpty || isDetectingTax)
-                }
-                
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.endEditing()
+                    Button("Search") {
+                        showingPriceSearchAlert = false
+                        showingPriceSearchWebView = true
                     }
                 }
             }
-            .sheet(isPresented: $showingPriceSearchAlert) {
-                NavigationView {
-                    Form {
-                        Section(header: Text("Search Details")) {
-                            TextField("Item Name", text: .constant(name))
-                                .disabled(true)
-                                .foregroundColor(.secondary)
-                            
-                            TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
-                            
-                            Picker("Website", selection: $selectedWebsite) {
-                                ForEach(settingsService.stores, id: \.id) { store in
-                                    Text(store.name).tag(store.name)
-                                }
-                            }
-                            .pickerStyle(MenuPickerStyle())
-                        }
-                    }
-                    .navigationTitle("Search Price")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Cancel") {
-                                showingPriceSearchAlert = false
-                            }
-                        }
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Search") {
-                                showingPriceSearchAlert = false
-                                showingPriceSearchWebView = true
-                            }
-                        }
-                    }
-                }
+        }
+    }
+    
+    @ViewBuilder
+    private var priceSearchWebView: some View {
+        PriceSearchView(
+            itemName: name,
+            specification: priceSearchSpecification.isEmpty ? nil : priceSearchSpecification,
+            website: selectedWebsite,
+            selectedPrice: $webViewSelectedPrice,
+            selectedItemName: $webViewSelectedItemName,
+            settingsService: settingsService
+        )
+    }
+    
+    private func handlePriceSelection(_ price: Double?) {
+        guard let price = price else { return }
+        
+        showingPriceSearchWebView = false
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            costString = String(format: "%.2f", price)
+            
+            let searchTerm = priceSearchSpecification.isEmpty ? name : "\(name) \(priceSearchSpecification)"
+            priceSourceURL = settingsService.buildSearchURL(for: selectedWebsite, searchTerm: searchTerm)
+            
+            webViewSelectedPrice = nil
+            webViewSelectedItemName = nil
+        }
+    }
+    
+    private func setupInitialValues() {
+        if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
+            if let defaultStore = settingsService.getDefaultStore() {
+                selectedWebsite = defaultStore.name
+            } else {
+                selectedWebsite = settingsService.stores.first!.name
             }
-            .fullScreenCover(isPresented: $showingPriceSearchWebView) {
-                PriceSearchView(
-                    itemName: name,
-                    specification: priceSearchSpecification.isEmpty ? nil : priceSearchSpecification,
-                    website: selectedWebsite,
-                    selectedPrice: $webViewSelectedPrice,
-                    selectedItemName: $webViewSelectedItemName,
-                    settingsService: settingsService
-                )
-            }
-            .onChange(of: webViewSelectedPrice) { _, price in
-                if let price = price {
-                    // Dismiss the web view first
-                    showingPriceSearchWebView = false
-                    
-                    // Then update the price
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        costString = String(format: "%.2f", price)
-                        
-                        // Build the source URL for reference
-                        let searchTerm = priceSearchSpecification.isEmpty ? name : "\(name) \(priceSearchSpecification)"
-                        priceSourceURL = settingsService.buildSearchURL(for: selectedWebsite, searchTerm: searchTerm)
-                        
-                        // Reset for next search
-                        webViewSelectedPrice = nil
-                        webViewSelectedItemName = nil
-                    }
-                }
-            }
-            .onChange(of: measurementQuantityString) { _, newValue in
-                measurementQuantity = Double(newValue) ?? 1.0
-            }
-            .onAppear {
-                if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
-                    if let defaultStore = settingsService.getDefaultStore() {
-                        selectedWebsite = defaultStore.name
-                    } else {
-                        selectedWebsite = settingsService.stores.first!.name
-                    }
-                }
-                
-                // Apply prefilled data if available
-                if let prefillName = prefillName, !prefillName.isEmpty {
-                    name = prefillName
-                }
-                if let prefillPrice = prefillPrice {
-                    costString = String(format: "%.2f", prefillPrice)
-                }
-            }
-            .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {
-                Button("OK") { 
-                    addItem() // Still proceed with adding the item
-                }
-            } message: {
-                Text(currentErrorMessage)
-            }
-            .alert("Additive Analysis Error", isPresented: $showingAdditiveErrorAlert) {
-                Button("OK") { }
-            } message: {
-                Text(currentErrorMessage)
-            }
-            .alert("Price Guess Error", isPresented: $showingPriceErrorAlert) {
-                Button("OK") { }
-            } message: {
-                Text(currentErrorMessage)
-            }
+        }
+        
+        if let prefillName = prefillName, !prefillName.isEmpty {
+            name = prefillName
+        }
+        if let prefillPrice = prefillPrice {
+            costString = String(format: "%.2f", prefillPrice)
         }
     }
     

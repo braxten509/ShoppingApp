@@ -9,6 +9,10 @@ struct MainTabView: View {
     @StateObject private var billingService = BillingService()
     @StateObject private var historyService = HistoryService()
     
+    private var aiService: AIService {
+        AIService(settingsService: settingsService, billingService: billingService, historyService: historyService)
+    }
+    
     var body: some View {
         TabView {
             CalculatorView(
@@ -23,6 +27,17 @@ struct MainTabView: View {
             .tabItem {
                 Image(systemName: "cart")
                 Text("Shop")
+            }
+            
+            SearchTabView(
+                store: store,
+                locationManager: locationManager,
+                settingsService: settingsService,
+                aiService: aiService
+            )
+            .tabItem {
+                Image(systemName: "magnifyingglass")
+                Text("Search")
             }
             
             ShoppingHistoryView(historyStore: historyStore, shoppingListStore: store)

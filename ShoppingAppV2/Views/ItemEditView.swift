@@ -58,6 +58,14 @@ struct ItemEditView: View {
                         Text("per item")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                        
+                        Button(action: {
+                            setupPriceSearch()
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.purple)
+                        }
+                        .disabled(name.isEmpty)
                     }
                     
                     HStack {
@@ -130,11 +138,6 @@ struct ItemEditView: View {
                         .disabled(isReanalyzingTax || name.isEmpty)
                     }
                     
-                    Button("Search Price") {
-                        setupPriceSearch()
-                    }
-                    .foregroundColor(.purple)
-                    .disabled(name.isEmpty)
                     
                     if priceSourceURL != nil {
                         Button("Click here to see price source") {

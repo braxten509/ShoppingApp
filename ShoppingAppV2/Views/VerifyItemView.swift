@@ -91,6 +91,14 @@ struct VerifyItemView: View {
                         Text("$")
                         TextField("0.00", text: $costString)
                             .keyboardType(.decimalPad)
+                        
+                        Button(action: {
+                            setupPriceSearch()
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.purple)
+                        }
+                        .disabled(name.isEmpty)
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -186,12 +194,6 @@ struct VerifyItemView: View {
                     }
                     
                     
-                    // Search Price button
-                    Button("Search Price") {
-                        setupPriceSearch()
-                    }
-                    .foregroundColor(.purple)
-                    .disabled(name.isEmpty)
                     
                     if priceSourceURL != nil {
                         Button("Click here to see price source") {

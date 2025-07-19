@@ -11,10 +11,11 @@ ShoppingAppV2 is an iOS SwiftUI application that helps users calculate shopping 
 ### Main Components
 
 - **ContentView**: Primary UI coordinator that manages the shopping experience
-- **AIService**: Centralized AI service coordinator that routes requests to appropriate providers
+- **AIService**: Centralized AI service coordinator that routes requests to appropriate providers  
 - **ShoppingListStore**: Core data store for shopping items with automatic persistence
 - **LocationManager**: Handles location detection for tax rate calculations
 - **Models.swift**: Contains all data models including ShoppingItem, PriceTagInfo, and additive analysis
+- **Migration/**: Data and file migration utilities for backwards compatibility
 
 ### AI Integration
 
@@ -40,6 +41,7 @@ AI provider selection is configurable per task type through SettingsService:
 - **BillingService**: Tracks API costs and credit usage
 - **HistoryService**: Manages prompt history and interaction tracking
 - **SettingsService**: Manages user preferences and API keys
+- **OpenAIService**: Legacy OpenAI service implementation (contains billing logic)
 
 ## Key Features
 
@@ -87,12 +89,28 @@ The app requires API keys to be configured in the settings:
 - `SettingsView.swift`: App configuration
 - `BillingView.swift`: Cost tracking interface
 - `PromptsHistoryView.swift`: AI interaction history
-- `PromptCustomizationView.swift`: AI prompt editing interface
+- `AISettingsView.swift`: AI model selection and configuration
+- `APIKeysView.swift`: API key management interface
+- `AdditiveDetailView.swift`: Detailed additive information display
+- `CameraView.swift`: Camera integration for price tag scanning
+- `CalculatorView.swift`: Shopping cost calculation interface
+- `MainTabView.swift`: Primary tab navigation controller
+- `PriceSearchWebView.swift`: Web-based price search interface
+- `SearchTabView.swift`: Product search and price comparison
+- `ShoppingHistoryView.swift`: Historical shopping data
+- `StoreManagementView.swift`: Custom store configuration
 
 ### Services
 - `BillingService.swift`: Cost tracking and credit management
 - `HistoryService.swift`: Prompt history management
 - `SettingsService.swift`: User preferences and API key storage
+- `OpenAIService.swift`: Legacy OpenAI integration with billing
+
+### Supporting Files
+- `AIProviderProtocol.swift`: Protocol definition for AI service providers
+- `ShareSheet.swift`: iOS sharing functionality
+- `Migration/DataMigration.swift`: User data migration utilities
+- `Migration/FileMigration.swift`: File system migration utilities
 
 ## Important Implementation Details
 
@@ -123,6 +141,18 @@ The app requires API keys to be configured in the settings:
 - Enable/disable custom prompts with fallback to defaults
 - Reset functionality for individual or all prompts
 
+### Additive Analysis
+- Built-in database of risky and safe food additives in `Models.swift`
+- Risk level categorization with detailed descriptions
+- Automatic ingredient analysis for health-conscious shopping
+- Comprehensive additive database with E-numbers and common names
+
+### Store Management
+- Configurable store list with custom search URLs
+- Default stores include Broulim's, Walmart, Target
+- Support for custom store addition and URL formatting
+- Dynamic search URL construction with placeholder replacement
+
 ## Testing Approach
 
 The app includes unit tests in `ShoppingAppV2Tests/` and UI tests in `ShoppingAppV2UITests/`. Tests should verify:
@@ -130,3 +160,26 @@ The app includes unit tests in `ShoppingAppV2Tests/` and UI tests in `ShoppingAp
 - Data model calculations
 - Shopping list persistence
 - Location-based tax calculations
+- Additive analysis functionality
+- Migration logic for backwards compatibility
+- Billing and cost tracking accuracy
+
+## Key Development Patterns
+
+### Data Flow
+1. **User Input** → Camera/Manual entry → `ContentView`
+2. **AI Processing** → `AIService` routes to appropriate provider (OpenAI/Perplexity/Gemini)
+3. **Data Storage** → `ShoppingListStore` with automatic UserDefaults persistence
+4. **Cost Tracking** → All AI interactions logged via `BillingService` and `HistoryService`
+
+### Configuration Management
+- Settings stored in `SettingsService` with UserDefaults backing
+- API keys managed securely through `APIKeysView`
+- Model selection per task type (tax rate, image analysis, text processing)
+- Manual tax rate override option for consistent calculations
+
+### Error Handling Strategy
+- Graceful degradation when AI services fail
+- Retry logic with exponential backoff for critical operations
+- User-friendly error messages with actionable guidance
+- Fallback mechanisms (e.g., manual tax entry when detection fails)

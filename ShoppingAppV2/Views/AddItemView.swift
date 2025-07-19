@@ -7,6 +7,10 @@ struct AddItemView: View {
     @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
     
+    // Optional prefill parameters
+    let prefillName: String?
+    let prefillPrice: Double?
+    
     @State private var name = ""
     @State private var costString = ""
     @State private var taxMode: TaxMode = .defaultMode
@@ -32,6 +36,16 @@ struct AddItemView: View {
     @State private var measurementQuantity = 1.0
     @State private var measurementQuantityString = "1.0"
     @State private var selectedMeasurementUnit = MeasurementUnit.units
+    
+    // Initializer to support prefilled data
+    init(store: ShoppingListStore, locationManager: LocationManager, aiService: AIService, settingsService: SettingsService, prefillName: String? = nil, prefillPrice: Double? = nil) {
+        self.store = store
+        self.locationManager = locationManager
+        self.aiService = aiService
+        self.settingsService = settingsService
+        self.prefillName = prefillName
+        self.prefillPrice = prefillPrice
+    }
     
     enum TaxMode: String, CaseIterable {
         case defaultMode = "Default"
@@ -59,6 +73,14 @@ struct AddItemView: View {
                         Text("$")
                         TextField("0.00", text: $costString)
                             .keyboardType(.decimalPad)
+                        
+                        Button(action: {
+                            setupPriceSearch()
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.purple)
+                        }
+                        .disabled(name.isEmpty)
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -123,11 +145,6 @@ struct AddItemView: View {
                         }
                     }
                     
-                    Button("Search Price") {
-                        setupPriceSearch()
-                    }
-                    .foregroundColor(.purple)
-                    .disabled(name.isEmpty)
                     
                     if priceSourceURL != nil {
                         Button("Click here to see price source") {
@@ -227,7 +244,7 @@ struct AddItemView: View {
                     settingsService: settingsService
                 )
             }
-            .onChange(of: webViewSelectedPrice) { price in
+            .onChange(of: webViewSelectedPrice) { _, price in
                 if let price = price {
                     // Dismiss the web view first
                     showingPriceSearchWebView = false
@@ -256,6 +273,14 @@ struct AddItemView: View {
                     } else {
                         selectedWebsite = settingsService.stores.first!.name
                     }
+                }
+                
+                // Apply prefilled data if available
+                if let prefillName = prefillName, !prefillName.isEmpty {
+                    name = prefillName
+                }
+                if let prefillPrice = prefillPrice {
+                    costString = String(format: "%.2f", prefillPrice)
                 }
             }
             .alert("Tax Rate Error", isPresented: $showingTaxErrorAlert) {

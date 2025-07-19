@@ -322,62 +322,6 @@ class AIService: ObservableObject {
         return (priceResponse.estimatedPrice, priceResponse.sourceURL)
     }
 
-    func analyzeProductForAdditives(productName: String) async throws -> (risky: Int, safe: Int, additiveDetails: [AdditiveInfo])? {
-        let model = settingsService.selectedModelForTagIdentification
-        let apiKey = getAPIKey(for: model)
-        let url = getAPIURL(for: model)
-
-        let prompt = """
-        Analyze the additives in "\(productName)".
-        Respond with ONLY a valid JSON object in the format:
-        {"riskyAdditives": [{"name": "<name>", "riskLevel": "<level>", "description": "<desc>"}], "safeAdditives": [{"name": "<name>", "description": "<desc>"}], "explanation": "<explanation>"}
-        If ingredients are unknown, return {"riskyAdditives": null, "safeAdditives": null, "explanation": "<specific reason>"}.
-        """
-
-        let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
-        
-        print("Raw response from \(model) for additive analysis: \(String(data: data, encoding: .utf8) ?? "No response")")
-
-        let content = try extractContent(from: data, for: model)
-        
-        let cleanedContent = extractJSON(from: content)
-        
-        struct AdditivesResponse: Codable {
-            let riskyAdditives: [AdditiveInfo]?
-            let safeAdditives: [AdditiveInfo]?
-            let explanation: String?
-        }
-        
-        guard let jsonData = cleanedContent.data(using: .utf8),
-              let additivesResponse = try? JSONDecoder().decode(AdditivesResponse.self, from: jsonData) else {
-            throw NSError(domain: "APIError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode additives response"])
-        }
-        
-        // Track this interaction with billing and history
-        historyService.add(item: PromptHistoryItem(
-            timestamp: Date(),
-            type: "Additive Analysis",
-            prompt: prompt,
-            response: content,
-            estimatedCost: 0.001,
-            inputTokens: prompt.count / 4,
-            outputTokens: content.count / 4,
-            itemName: productName,
-            aiService: getServiceName(for: model),
-            model: model
-        ))
-        billingService.addCost(amount: 0.001)
-        
-        // If both risky and safe additives are nil, throw a descriptive error using AI's explanation
-        if additivesResponse.riskyAdditives == nil && additivesResponse.safeAdditives == nil {
-            let errorMessage = additivesResponse.explanation ?? "Unable to analyze additives for '\(productName)'"
-            throw NSError(domain: "AdditiveAnalysisError", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: errorMessage
-            ])
-        }
-        
-        return (additivesResponse.riskyAdditives?.count ?? 0, additivesResponse.safeAdditives?.count ?? 0, (additivesResponse.riskyAdditives ?? []) + (additivesResponse.safeAdditives ?? []))
-    }
 
     private func performRequest(prompt: String, apiKey: String, url: URL, model: String, image: UIImage? = nil) async throws -> (Data, URLResponse) {
         guard !apiKey.isEmpty else {

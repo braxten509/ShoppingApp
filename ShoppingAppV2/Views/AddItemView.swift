@@ -17,7 +17,6 @@ struct AddItemView: View {
     @State private var customTaxRateString = "0.00"
     @State private var detectedTaxRate: Double? = nil
     @State private var isDetectingTax = false
-    @State private var isAnalyzingAdditives = false
     @State private var showingPriceSearchAlert = false
     @State private var priceSearchSpecification = ""
     @State private var selectedWebsite = ""
@@ -26,12 +25,8 @@ struct AddItemView: View {
     @State private var webViewSelectedPrice: Double? = nil
     @State private var webViewSelectedItemName: String? = nil
     @State private var showingTaxErrorAlert = false
-    @State private var showingAdditiveErrorAlert = false
     @State private var showingPriceErrorAlert = false
     @State private var currentErrorMessage = ""
-    @State private var riskyAdditives = 0
-    @State private var nonRiskyAdditives = 0
-    @State private var additiveDetails: [AdditiveInfo] = []
     @State private var isPriceByMeasurement = false
     @State private var measurementQuantity = 1.0
     @State private var measurementQuantityString = "1.0"
@@ -90,11 +85,6 @@ struct AddItemView: View {
                     Button("OK") { 
                         addItem()
                     }
-                } message: {
-                    Text(currentErrorMessage)
-                }
-                .alert("Additive Analysis Error", isPresented: $showingAdditiveErrorAlert) {
-                    Button("OK") { }
                 } message: {
                     Text(currentErrorMessage)
                 }
@@ -504,9 +494,6 @@ struct AddItemView: View {
             cost: Double(costString) ?? 0,
             taxRate: finalTaxRate,
             hasUnknownTax: hasUnknownTax,
-            riskyAdditives: riskyAdditives,
-            nonRiskyAdditives: nonRiskyAdditives,
-            additiveDetails: additiveDetails,
             isPriceByMeasurement: isPriceByMeasurement,
             measurementQuantity: measurementQuantity,
             measurementUnit: selectedMeasurementUnit.rawValue

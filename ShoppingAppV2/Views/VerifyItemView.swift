@@ -23,7 +23,6 @@ struct VerifyItemView: View {
     @State private var detectedTaxRate: Double? = nil
     @State private var hasUnknownTax: Bool
     @State private var taxDescription: String?
-    @State private var isAnalyzingAdditives = false
     @State private var isRetryingAnalysis = false
     @State private var isDetectingTax = false
     @State private var showingPriceSearchAlert = false
@@ -34,9 +33,6 @@ struct VerifyItemView: View {
     @State private var webViewSelectedPrice: Double? = nil
     @State private var webViewSelectedItemName: String? = nil
     @State private var retryCounter = 0
-    @State private var riskyAdditives = 0
-    @State private var nonRiskyAdditives = 0
-    @State private var additiveDetails: [AdditiveInfo] = []
     @State private var dynamicAnalysisIssues: [String] = []
     @State private var isPriceByMeasurement = false
     @State private var measurementQuantity = 1.0
@@ -433,9 +429,6 @@ struct VerifyItemView: View {
             cost: Double(costString) ?? 0,
             taxRate: finalTaxRate,
             hasUnknownTax: hasUnknownTax,
-            riskyAdditives: riskyAdditives,
-            nonRiskyAdditives: nonRiskyAdditives,
-            additiveDetails: additiveDetails,
             isPriceByMeasurement: isPriceByMeasurement,
             measurementQuantity: measurementQuantity,
             measurementUnit: selectedMeasurementUnit.rawValue

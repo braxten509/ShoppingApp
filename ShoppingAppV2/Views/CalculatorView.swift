@@ -25,8 +25,6 @@ struct CalculatorView: View {
     @State private var isProcessingImage = false
     @State private var showingFinishConfirmation = false
     @State private var showingSettings = false
-    @State private var showingAdditiveDetail = false
-    @State private var selectedItemForAdditives: ShoppingItem?
     @State private var showingError = false
     @State private var errorMessage = ""
     
@@ -111,11 +109,6 @@ struct CalculatorView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(openAIService: openAIService, settingsService: settingsService, store: store, historyService: historyService)
-            }
-            .sheet(isPresented: $showingAdditiveDetail) {
-                if let item = selectedItemForAdditives {
-                    AdditiveDetailView(additives: item.additiveDetails, productName: item.name)
-                }
             }
             .onChange(of: selectedImage) { _, image in
                 if let image = image {

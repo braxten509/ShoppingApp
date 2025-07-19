@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ShoppingAppV2 is an iOS SwiftUI application that helps users calculate shopping costs by scanning price tags and managing shopping lists. The app uses multiple AI providers (OpenAI, Perplexity, Google Gemini) for price tag analysis, tax rate detection, and ingredient analysis.
+ShoppingAppV2 is an iOS SwiftUI application that helps users calculate shopping costs by scanning price tags and managing shopping lists. The app uses multiple AI providers (OpenAI, Perplexity, Google Gemini) for price tag analysis and tax rate detection.
 
 ## Core Architecture
 
 ### Main Components
 
-- **ContentView**: Primary UI coordinator that manages the shopping experience
+- **CalculatorView**: Primary UI coordinator that manages the shopping experience
 - **AIService**: Centralized AI service coordinator that routes requests to appropriate providers  
 - **ShoppingListStore**: Core data store for shopping items with automatic persistence
 - **LocationManager**: Handles location detection for tax rate calculations
-- **Models.swift**: Contains all data models including ShoppingItem, PriceTagInfo, and additive analysis
+- **Models.swift**: Contains all data models including ShoppingItem and PriceTagInfo
 - **Migration/**: Data and file migration utilities for backwards compatibility
 
 ### AI Integration
@@ -27,13 +27,12 @@ The app supports multiple AI providers through a unified interface:
 AI provider selection is configurable per task type through SettingsService:
 - `selectedModelForTaxRate`: Model used for tax rate detection
 - `selectedModelForPhotoPrice`: Model used for price tag image analysis
-- `selectedModelForTagIdentification`: Model used for ingredient analysis and price guessing
+- `selectedModelForTagIdentification`: Model used for price guessing
 
 ### Data Models
 
-- **ShoppingItem**: Core shopping item with quantity tracking, tax calculations, and additive information
+- **ShoppingItem**: Core shopping item with quantity tracking and tax calculations
 - **PriceTagInfo**: Extracted information from price tag images
-- **AdditiveInfo**: Detailed information about food additives with risk levels
 - **PromptHistoryItem**: Tracks AI interactions for billing and history
 
 ### Service Architecture
@@ -48,10 +47,9 @@ AI provider selection is configurable per task type through SettingsService:
 1. **Price Tag Scanning**: Camera integration for OCR price extraction
 2. **Tax Rate Detection**: Location-based tax rate calculation
 3. **Quantity Management**: Dynamic quantity controls with cost calculations
-4. **Additive Analysis**: Health-focused ingredient risk assessment
-5. **Multi-Provider AI**: Configurable AI provider selection
-6. **Billing Tracking**: Comprehensive cost tracking across all AI interactions
-7. **Prompt Customization**: Advanced prompt editing system for tailoring AI interactions
+4. **Multi-Provider AI**: Configurable AI provider selection
+5. **Billing Tracking**: Comprehensive cost tracking across all AI interactions
+6. **Prompt Customization**: Advanced prompt editing system for tailoring AI interactions
 
 ## Common Development Commands
 
@@ -91,7 +89,6 @@ The app requires API keys to be configured in the settings:
 - `PromptsHistoryView.swift`: AI interaction history
 - `AISettingsView.swift`: AI model selection and configuration
 - `APIKeysView.swift`: API key management interface
-- `AdditiveDetailView.swift`: Detailed additive information display
 - `CameraView.swift`: Camera integration for price tag scanning
 - `CalculatorView.swift`: Shopping cost calculation interface
 - `MainTabView.swift`: Primary tab navigation controller
@@ -141,12 +138,6 @@ The app requires API keys to be configured in the settings:
 - Enable/disable custom prompts with fallback to defaults
 - Reset functionality for individual or all prompts
 
-### Additive Analysis
-- Built-in database of risky and safe food additives in `Models.swift`
-- Risk level categorization with detailed descriptions
-- Automatic ingredient analysis for health-conscious shopping
-- Comprehensive additive database with E-numbers and common names
-
 ### Store Management
 - Configurable store list with custom search URLs
 - Default stores include Broulim's, Walmart, Target
@@ -160,7 +151,6 @@ The app includes unit tests in `ShoppingAppV2Tests/` and UI tests in `ShoppingAp
 - Data model calculations
 - Shopping list persistence
 - Location-based tax calculations
-- Additive analysis functionality
 - Migration logic for backwards compatibility
 - Billing and cost tracking accuracy
 

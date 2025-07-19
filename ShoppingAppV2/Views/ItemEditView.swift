@@ -11,7 +11,6 @@ struct ItemEditView: View {
     @State private var costString: String
     @State private var quantityString: String
     @State private var taxRateString: String
-    @State private var showingAdditiveDetail = false
     @State private var isReanalyzingTax = false
     @State private var showingPriceSearchAlert = false
     @State private var priceSearchSpecification = ""
@@ -145,43 +144,6 @@ struct ItemEditView: View {
                     
                 }
                 
-                if !item.additiveDetails.isEmpty {
-                    Section(header: Text("Health Information")) {
-                        Button(action: {
-                            showingAdditiveDetail = true
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Additives Analysis")
-                                        .font(.headline)
-                                        .foregroundColor(.primary)
-                                    
-                                    HStack(spacing: 12) {
-                                        if item.riskyAdditives > 0 {
-                                            Text("\(item.riskyAdditives) Risky")
-                                                .font(.caption)
-                                                .foregroundColor(.red)
-                                                .fontWeight(.medium)
-                                        }
-                                        if item.nonRiskyAdditives > 0 {
-                                            Text("\(item.nonRiskyAdditives) Safe")
-                                                .font(.caption)
-                                                .foregroundColor(.green)
-                                                .fontWeight(.medium)
-                                        }
-                                    }
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
                 
                 Section(header: Text("Preview")) {
                     let quantity = max(1, Int(quantityString) ?? 1)
@@ -249,9 +211,6 @@ struct ItemEditView: View {
                         UIApplication.shared.endEditing()
                     }
                 }
-            }
-            .sheet(isPresented: $showingAdditiveDetail) {
-                AdditiveDetailView(additives: item.additiveDetails, productName: item.name)
             }
             .sheet(isPresented: $showingPriceSearchAlert) {
                 NavigationView {

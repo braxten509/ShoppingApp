@@ -27,7 +27,7 @@ struct SearchTabView: View {
                             .font(.title2)
                             .fontWeight(.semibold)
                         
-                        Text("Search for items and prices across different stores. Enable 'Select Items?' to add items directly to your cart.")
+                        Text("Search for items across different stores. Enable 'Select Items?' to capture item names and manually enter prices, just like photo/manual input.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.leading)
@@ -155,15 +155,15 @@ struct SearchTabView: View {
                     aiService: aiService,
                     settingsService: settingsService,
                     prefillName: webViewSelectedItemName ?? itemName,
-                    prefillPrice: webViewSelectedPrice
+                    prefillPrice: nil  // Don't prefill price when coming from search
                 )
             }
-            .onChange(of: webViewSelectedPrice) { _, price in
-                if let _ = price, selectItemsMode {
+            .onChange(of: webViewSelectedItemName) { _, itemName in
+                if let _ = itemName, selectItemsMode {
                     // Reset the search state
                     showingPriceSearchWebView = false
                     
-                    // Open AddItemView with prefilled data
+                    // Open AddItemView with prefilled name only (no price)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         showingAddItem = true
                     }
@@ -193,12 +193,7 @@ struct SearchPriceWebView: View {
     let selectItemsMode: Bool
     @Environment(\.presentationMode) var presentationMode
     @State private var showingHelpAlert = false
-    @State private var showingPriceConfirmation = false
-    @State private var showingManualPriceEntry = false
-    @State private var showingMinimizedPopup = false
-    @State private var tempPrice: Double = 0.0
-    @State private var tempItemName: String = ""
-    @State private var manualPriceText: String = ""
+    // Removed price confirmation states since we only capture names now
     
     private var searchURL: URL? {
         let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
@@ -221,101 +216,11 @@ struct SearchPriceWebView: View {
                             onDismiss: {
                                 presentationMode.wrappedValue.dismiss()
                             },
-                            onPriceSelected: selectItemsMode ? { price, itemName in
-                                tempPrice = price
-                                tempItemName = itemName
-                                manualPriceText = String(format: "%.2f", price)
-                                showingPriceConfirmation = true
+                            onNameSelected: selectItemsMode ? { itemName in
+                                selectedItemName = itemName
+                                presentationMode.wrappedValue.dismiss()
                             } : nil
                         )
-                        
-                        // Manual price entry overlay
-                        if showingManualPriceEntry {
-                            Color.black.opacity(0.3)
-                                .ignoresSafeArea()
-                                .onTapGesture {
-                                    withAnimation(.easeInOut(duration: 0.6)) {
-                                        showingManualPriceEntry = false
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        showingMinimizedPopup = true
-                                    }
-                                }
-                            
-                            VStack(spacing: 20) {
-                                Text("Enter Price Manually")
-                                    .font(.headline)
-                                Text("Enter the correct price for:")
-                                    .font(.subheadline)
-                                Text(tempItemName)
-                                    .font(.body)
-                                    .multilineTextAlignment(.center)
-                                
-                                TextField("Price", text: $manualPriceText)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .keyboardType(.decimalPad)
-                                    .frame(width: 120)
-                                
-                                HStack(spacing: 20) {
-                                    Button("Cancel") {
-                                        showingManualPriceEntry = false
-                                        manualPriceText = ""
-                                    }
-                                    .foregroundColor(.red)
-                                    
-                                    Button("Confirm") {
-                                        if let manualPrice = Double(manualPriceText), manualPrice > 0 {
-                                            selectedPrice = manualPrice
-                                            selectedItemName = tempItemName
-                                            presentationMode.wrappedValue.dismiss()
-                                        }
-                                    }
-                                    .foregroundColor(.blue)
-                                    .disabled(manualPriceText.isEmpty || Double(manualPriceText) == nil)
-                                }
-                            }
-                            .padding(20)
-                            .background(Color(.systemBackground))
-                            .cornerRadius(12)
-                            .shadow(radius: 10)
-                            .frame(maxWidth: 300)
-                            .scaleEffect(showingManualPriceEntry ? 1.0 : 0.1)
-                            .opacity(showingManualPriceEntry ? 1.0 : 0.0)
-                            .animation(.easeInOut(duration: 0.6), value: showingManualPriceEntry)
-                        }
-                        
-                        // Minimized notification bell
-                        if showingMinimizedPopup {
-                            VStack {
-                                Spacer()
-                                HStack {
-                                    Spacer()
-                                    Button(action: {
-                                        withAnimation(.easeInOut(duration: 0.6)) {
-                                            showingMinimizedPopup = false
-                                        }
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                            showingManualPriceEntry = true
-                                        }
-                                    }) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(Color.blue)
-                                                .frame(width: 50, height: 50)
-                                            
-                                            Image(systemName: "bell.fill")
-                                                .foregroundColor(.white)
-                                                .font(.system(size: 20))
-                                        }
-                                    }
-                                    .scaleEffect(showingMinimizedPopup ? 1.0 : 0.1)
-                                    .opacity(showingMinimizedPopup ? 1.0 : 0.0)
-                                    .animation(.easeInOut(duration: 0.6), value: showingMinimizedPopup)
-                                    .padding(.trailing, 20)
-                                    .padding(.bottom, 20)
-                                }
-                            }
-                        }
                     }
                 } else {
                     Text("Invalid website selection")
@@ -341,26 +246,10 @@ struct SearchPriceWebView: View {
                 Button("OK") { }
             } message: {
                 if selectItemsMode {
-                    Text("Tap directly on any item or its price to select it and add to your cart. The app will automatically capture the price and open the add item screen.")
+                    Text("Tap directly on any item to select it. The app will capture the item name and let you enter the price manually, just like photo/manual input.")
                 } else {
                     Text("Browse the website to view items and prices. Items will not be added to your cart unless 'Select Items?' is enabled.")
                 }
-            }
-            .alert("Confirm Price", isPresented: $showingPriceConfirmation) {
-                Button("Yes") {
-                    selectedPrice = tempPrice
-                    selectedItemName = tempItemName
-                    presentationMode.wrappedValue.dismiss()
-                }
-                Button("No") {
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        showingManualPriceEntry = true
-                    }
-                    showingMinimizedPopup = false
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("\(tempItemName)\n\n**$\(String(format: "%.2f", tempPrice))**\n\nCorrect?")
             }
         }
     }
@@ -372,7 +261,7 @@ struct SearchWebView: UIViewRepresentable {
     @Binding var selectedItemName: String?
     let selectItemsMode: Bool
     var onDismiss: () -> Void
-    var onPriceSelected: ((Double, String) -> Void)?
+    var onNameSelected: ((String) -> Void)?
     
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
@@ -409,18 +298,16 @@ struct SearchWebView: UIViewRepresentable {
                 let itemName = findItemName(element);
                 
                 console.log('Clicked element:', element);
-                console.log('Found price:', priceText);
                 console.log('Found item name:', itemName);
                 
-                if (priceText && itemName) {
-                    // Send the data back to Swift
+                if (itemName) {
+                    // Send only the item name back to Swift
                     window.webkit.messageHandlers.priceSelection.postMessage({
-                        price: priceText,
                         itemName: itemName
                     });
                 } else {
-                    // Show visual feedback that we're trying to capture the price
-                    console.log('Could not find both price and item name');
+                    // Show visual feedback that we're trying to capture the item name
+                    console.log('Could not find item name');
                 }
             }
             
@@ -722,16 +609,12 @@ struct SearchWebView: UIViewRepresentable {
             guard parent.selectItemsMode else { return }
             
             if message.name == "priceSelection", let data = message.body as? [String: Any] {
-                if let priceString = data["price"] as? String,
-                   let price = Double(priceString),
-                   let itemName = data["itemName"] as? String {
-                    
+                if let itemName = data["itemName"] as? String {
                     DispatchQueue.main.async {
-                        if let onPriceSelected = self.parent.onPriceSelected {
-                            onPriceSelected(price, itemName)
+                        if let onNameSelected = self.parent.onNameSelected {
+                            onNameSelected(itemName)
                         } else {
                             // Fallback to original behavior
-                            self.parent.selectedPrice = price
                             self.parent.selectedItemName = itemName
                             self.parent.onDismiss()
                         }

@@ -65,6 +65,25 @@ class SettingsService: ObservableObject {
         }
     }
     
+    // Credit tracking
+    @Published var openAICredits: Double {
+        didSet {
+            UserDefaults.standard.set(openAICredits, forKey: "openAICredits")
+        }
+    }
+    
+    @Published var perplexityCredits: Double {
+        didSet {
+            UserDefaults.standard.set(perplexityCredits, forKey: "perplexityCredits")
+        }
+    }
+    
+    @Published var lastSyncDate: Date? {
+        didSet {
+            UserDefaults.standard.set(lastSyncDate, forKey: "lastSyncDate")
+        }
+    }
+    
 
     let aiModels = [
         // OpenAI Models
@@ -87,6 +106,10 @@ class SettingsService: ObservableObject {
         let storedTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
         self.manualTaxRate = storedTaxRate > 0 ? storedTaxRate : 6.0
         self.defaultStoreId = UserDefaults.standard.string(forKey: "defaultStoreId")
+        // Initialize credit tracking with default "Unknown" state (-1 indicates unknown)
+        self.openAICredits = UserDefaults.standard.object(forKey: "openAICredits") as? Double ?? -1.0
+        self.perplexityCredits = UserDefaults.standard.object(forKey: "perplexityCredits") as? Double ?? -1.0
+        self.lastSyncDate = UserDefaults.standard.object(forKey: "lastSyncDate") as? Date
         self.stores = []
         loadStores()
     }
@@ -193,5 +216,40 @@ class SettingsService: ObservableObject {
             return stores.first?.id == store.id
         }
         return store.id.uuidString == defaultId
+    }
+    
+    // MARK: - Credit Management
+    
+    func updateOpenAICredits(_ credits: Double) {
+        print("📝 SettingsService: Updating OpenAI credits from \(openAICredits) to \(credits)")
+        openAICredits = credits
+        lastSyncDate = Date()
+        print("📝 SettingsService: OpenAI credits updated successfully")
+    }
+    
+    func updatePerplexityCredits(_ credits: Double) {
+        print("📝 SettingsService: Updating Perplexity credits from \(perplexityCredits) to \(credits)")
+        perplexityCredits = credits
+        lastSyncDate = Date()
+        print("📝 SettingsService: Perplexity credits updated successfully")
+    }
+    
+    func deductOpenAICredits(_ amount: Double) {
+        if openAICredits > 0 {
+            openAICredits = max(0, openAICredits - amount)
+        }
+    }
+    
+    func deductPerplexityCredits(_ amount: Double) {
+        if perplexityCredits > 0 {
+            perplexityCredits = max(0, perplexityCredits - amount)
+        }
+    }
+    
+    func formatCredits(_ credits: Double) -> String {
+        if credits < 0 {
+            return "Unknown"
+        }
+        return String(format: "%.2f", credits)
     }
 }

@@ -99,6 +99,15 @@ class AIService: ObservableObject {
         ))
         billingService.addCost(amount: 0.001)
         
+        // Deduct from credits if we have a sync date
+        if let _ = settingsService.lastSyncDate {
+            if model.hasPrefix("gpt-") {
+                settingsService.deductOpenAICredits(0.001)
+            } else if model.hasPrefix("sonar") {
+                settingsService.deductPerplexityCredits(0.001)
+            }
+        }
+        
         // If tax rate is nil, try retry logic then throw descriptive error
         if let response = taxResponse, let rate = response.taxRate {
             return rate
@@ -172,6 +181,15 @@ class AIService: ObservableObject {
             model: model
         ))
         billingService.addCost(amount: 0.005)
+        
+        // Deduct from credits if we have a sync date
+        if let _ = settingsService.lastSyncDate {
+            if model.hasPrefix("gpt-") {
+                settingsService.deductOpenAICredits(0.005)
+            } else if model.hasPrefix("sonar") {
+                settingsService.deductPerplexityCredits(0.005)
+            }
+        }
         
         // Automatically search for tax info if:
         // 1. Manual tax rate is not enabled (meaning we should use AI for tax detection)
@@ -254,6 +272,31 @@ class AIService: ObservableObject {
         
         do {
             let result = try JSONDecoder().decode(PriceSearchResult.self, from: data)
+            
+            // Track this interaction with billing and history
+            historyService.add(item: PromptHistoryItem(
+                timestamp: Date(),
+                type: "Price Search",
+                prompt: prompt,
+                response: String(data: data, encoding: .utf8) ?? "",
+                estimatedCost: 0.003,
+                inputTokens: prompt.count / 4,
+                outputTokens: (String(data: data, encoding: .utf8) ?? "").count / 4,
+                itemName: itemName,
+                aiService: getServiceName(for: model),
+                model: model
+            ))
+            billingService.addCost(amount: 0.003)
+            
+            // Deduct from credits if we have a sync date
+            if let _ = settingsService.lastSyncDate {
+                if model.hasPrefix("gpt-") {
+                    settingsService.deductOpenAICredits(0.003)
+                } else if model.hasPrefix("sonar") {
+                    settingsService.deductPerplexityCredits(0.003)
+                }
+            }
+            
             return result
         } catch {
             // If JSON parsing fails, return not found
@@ -310,6 +353,15 @@ class AIService: ObservableObject {
             model: model
         ))
         billingService.addCost(amount: 0.002)
+        
+        // Deduct from credits if we have a sync date
+        if let _ = settingsService.lastSyncDate {
+            if model.hasPrefix("gpt-") {
+                settingsService.deductOpenAICredits(0.002)
+            } else if model.hasPrefix("sonar") {
+                settingsService.deductPerplexityCredits(0.002)
+            }
+        }
         
         // If price is nil, throw a descriptive error using AI's explanation
         if priceResponse.estimatedPrice == nil {

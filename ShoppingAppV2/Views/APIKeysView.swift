@@ -15,6 +15,16 @@ struct APIKeysView: View {
     @State private var showingPerplexityKeysWeb = false
     @State private var showingPerplexityBillingWeb = false
     
+    // Credit sync states
+    @State private var showingOpenAICreditSync = false
+    @State private var showingPerplexityCreditSync = false
+    @State private var isSyncing = false
+    
+    // Manual credit input states
+    @State private var showingManualOpenAIInput = false
+    @State private var showingManualPerplexityInput = false
+    @State private var manualCreditInput = ""
+    
     var body: some View {
         List {
             Section {
@@ -75,6 +85,22 @@ struct APIKeysView: View {
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
+                
+                // Credits Display
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Credits")
+                        Button("Manual Entry") {
+                            manualCreditInput = ""
+                            showingManualOpenAIInput = true
+                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                    }
+                    Spacer()
+                    Text("$\(settingsService.formatCredits(settingsService.openAICredits))")
+                        .foregroundColor(settingsService.openAICredits < 0 ? .secondary : .primary)
+                }
             } header: {
                 Text("OpenAI Configuration")
             }
@@ -137,12 +163,41 @@ struct APIKeysView: View {
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
+                
+                // Credits Display
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Credits")
+                        Button("Manual Entry") {
+                            manualCreditInput = ""
+                            showingManualPerplexityInput = true
+                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                    }
+                    Spacer()
+                    Text("$\(settingsService.formatCredits(settingsService.perplexityCredits))")
+                        .foregroundColor(settingsService.perplexityCredits < 0 ? .secondary : .primary)
+                }
             } header: {
                 Text("Perplexity Configuration")
             }
         }
         .navigationTitle("API Keys")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: syncCredits) {
+                    if isSyncing {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(isSyncing)
+            }
+        }
         .alert("Set OpenAI API Key", isPresented: $showingAPIKeyAlert) {
             TextField("API Key", text: $apiKeyInput)
             Button("Cancel", role: .cancel) { }
@@ -177,6 +232,32 @@ struct APIKeysView: View {
         } message: {
             Text("Are you sure you want to delete your Perplexity API key? You'll need to enter it again to use price search features.")
         }
+        .alert("Set OpenAI Credits", isPresented: $showingManualOpenAIInput) {
+            TextField("Credits Amount", text: $manualCreditInput)
+                .keyboardType(.decimalPad)
+            Button("Cancel", role: .cancel) { }
+            Button("Save") {
+                if let credits = Double(manualCreditInput), credits >= 0 {
+                    print("💡 Manual OpenAI credit entry: $\(credits)")
+                    settingsService.updateOpenAICredits(credits)
+                }
+            }
+        } message: {
+            Text("Enter your current OpenAI credit balance manually.")
+        }
+        .alert("Set Perplexity Credits", isPresented: $showingManualPerplexityInput) {
+            TextField("Credits Amount", text: $manualCreditInput)
+                .keyboardType(.decimalPad)
+            Button("Cancel", role: .cancel) { }
+            Button("Save") {
+                if let credits = Double(manualCreditInput), credits >= 0 {
+                    print("💡 Manual Perplexity credit entry: $\(credits)")
+                    settingsService.updatePerplexityCredits(credits)
+                }
+            }
+        } message: {
+            Text("Enter your current Perplexity credit balance manually.")
+        }
         .sheet(isPresented: $showingOpenAIKeysWeb) {
             SecureWebViewSheet(
                 url: URL(string: "https://platform.openai.com/api-keys")!,
@@ -205,6 +286,70 @@ struct APIKeysView: View {
                 isPresented: $showingPerplexityBillingWeb
             )
         }
+        .sheet(isPresented: $showingOpenAICreditSync) {
+            CreditSyncWebView(
+                url: URL(string: "https://platform.openai.com/account/billing/overview")!,
+                provider: "OpenAI",
+                isPresented: $showingOpenAICreditSync,
+                onCreditsFound: { credits in
+                    print("🔄 Updating OpenAI credits: $\(credits)")
+                    settingsService.updateOpenAICredits(credits)
+                    print("✅ OpenAI credits updated. New value: \(settingsService.formatCredits(settingsService.openAICredits))")
+                },
+                onCompleted: onOpenAISyncComplete
+            )
+        }
+        .sheet(isPresented: $showingPerplexityCreditSync) {
+            CreditSyncWebView(
+                url: URL(string: "https://www.perplexity.ai/account/api/billing")!,
+                provider: "Perplexity",
+                isPresented: $showingPerplexityCreditSync,
+                onCreditsFound: { credits in
+                    print("🔄 Updating Perplexity credits: $\(credits)")
+                    settingsService.updatePerplexityCredits(credits)
+                    print("✅ Perplexity credits updated. New value: \(settingsService.formatCredits(settingsService.perplexityCredits))")
+                },
+                onCompleted: onPerplexitySyncComplete
+            )
+        }
+    }
+    
+    private func syncCredits() {
+        print("🔄 Starting credit sync process")
+        isSyncing = true
+        
+        // Start with OpenAI first
+        if !settingsService.openAIAPIKey.isEmpty {
+            print("🔑 OpenAI API key found, starting OpenAI sync")
+            showingOpenAICreditSync = true
+        } else if !settingsService.perplexityAPIKey.isEmpty {
+            // If no OpenAI key, try Perplexity directly
+            print("🔑 Perplexity API key found, starting Perplexity sync")
+            showingPerplexityCreditSync = true
+        } else {
+            print("⚠️ No API keys configured")
+            isSyncing = false
+        }
+    }
+    
+    private func onOpenAISyncComplete() {
+        print("✅ OpenAI sync completed")
+        // After OpenAI sync completes, try Perplexity
+        if !settingsService.perplexityAPIKey.isEmpty {
+            print("🔑 Starting Perplexity sync after OpenAI")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                showingPerplexityCreditSync = true
+            }
+        } else {
+            print("✅ All syncs completed")
+            isSyncing = false
+        }
+    }
+    
+    private func onPerplexitySyncComplete() {
+        print("✅ Perplexity sync completed")
+        print("✅ All syncs completed")
+        isSyncing = false
     }
 }
 

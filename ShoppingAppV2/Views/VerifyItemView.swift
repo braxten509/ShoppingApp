@@ -96,7 +96,7 @@ struct VerifyItemView: View {
                             setupPriceSearch()
                         }) {
                             Image(systemName: "magnifyingglass")
-                                .foregroundColor(.purple)
+                                .foregroundColor(name.isEmpty ? .gray : .purple)
                         }
                         .disabled(name.isEmpty)
                     }
@@ -129,6 +129,10 @@ struct VerifyItemView: View {
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
                                     .frame(width: 80)
                                 
+                                Text(selectedMeasurementUnit.displayText(for: Double(measurementQuantityString) ?? 1.0))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 60, alignment: .leading)
+                                
                                 Picker("Unit", selection: $selectedMeasurementUnit) {
                                     ForEach(MeasurementUnit.allCases, id: \.self) { unit in
                                         Text(unit.displayName).tag(unit)
@@ -138,7 +142,7 @@ struct VerifyItemView: View {
                             }
                             
                             if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
-                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.rawValue))")
+                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.singularForm))")
                                     .font(.caption)
                                     .foregroundColor(.green)
                             }
@@ -195,13 +199,6 @@ struct VerifyItemView: View {
                     
                     
                     
-                    if priceSourceURL != nil {
-                        Button("Click here to see price source") {
-                            openPriceSource()
-                        }
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    }
                     
                     if let onRetakePhoto = onRetakePhoto {
                         Button("Retry & Take New Photo") {
@@ -253,6 +250,13 @@ struct VerifyItemView: View {
                         }
                     }
                     .disabled(costString.isEmpty || isDetectingTax)
+                }
+                
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.endEditing()
+                    }
                 }
             }
 .sheet(isPresented: $showingPriceSearchAlert) {

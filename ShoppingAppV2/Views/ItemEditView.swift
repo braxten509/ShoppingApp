@@ -63,7 +63,7 @@ struct ItemEditView: View {
                             setupPriceSearch()
                         }) {
                             Image(systemName: "magnifyingglass")
-                                .foregroundColor(.purple)
+                                .foregroundColor(name.isEmpty ? .gray : .purple)
                         }
                         .disabled(name.isEmpty)
                     }
@@ -103,6 +103,10 @@ struct ItemEditView: View {
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
                                     .frame(width: 80)
                                 
+                                Text(selectedMeasurementUnit.displayText(for: Double(measurementQuantityString) ?? 1.0))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 60, alignment: .leading)
+                                
                                 Picker("Unit", selection: $selectedMeasurementUnit) {
                                     ForEach(MeasurementUnit.allCases, id: \.self) { unit in
                                         Text(unit.displayName).tag(unit)
@@ -112,7 +116,7 @@ struct ItemEditView: View {
                             }
                             
                             if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
-                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.rawValue))")
+                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.singularForm))")
                                     .font(.caption)
                                     .foregroundColor(.green)
                             }
@@ -139,13 +143,6 @@ struct ItemEditView: View {
                     }
                     
                     
-                    if priceSourceURL != nil {
-                        Button("Click here to see price source") {
-                            openPriceSource()
-                        }
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    }
                 }
                 
                 if !item.additiveDetails.isEmpty {
@@ -243,6 +240,13 @@ struct ItemEditView: View {
                         item.measurementQuantity = Double(measurementQuantityString) ?? 1.0
                         item.measurementUnit = selectedMeasurementUnit.rawValue
                         presentationMode.wrappedValue.dismiss()
+                    }
+                }
+                
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.endEditing()
                     }
                 }
             }

@@ -193,6 +193,12 @@ struct SearchPriceWebView: View {
     let selectItemsMode: Bool
     @Environment(\.presentationMode) var presentationMode
     @State private var showingHelpAlert = false
+    @State private var showingPriceConfirmation = false
+    @State private var showingManualPriceEntry = false
+    @State private var showingMinimizedPopup = false
+    @State private var tempPrice: Double = 0.0
+    @State private var tempItemName: String = ""
+    @State private var manualPriceText: String = ""
     
     private var searchURL: URL? {
         let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
@@ -206,15 +212,111 @@ struct SearchPriceWebView: View {
         NavigationView {
             VStack {
                 if let url = searchURL {
-                    SearchWebView(
-                        url: url,
-                        selectedPrice: $selectedPrice,
-                        selectedItemName: $selectedItemName,
-                        selectItemsMode: selectItemsMode,
-                        onDismiss: {
-                            presentationMode.wrappedValue.dismiss()
+                    ZStack {
+                        SearchWebView(
+                            url: url,
+                            selectedPrice: $selectedPrice,
+                            selectedItemName: $selectedItemName,
+                            selectItemsMode: selectItemsMode,
+                            onDismiss: {
+                                presentationMode.wrappedValue.dismiss()
+                            },
+                            onPriceSelected: selectItemsMode ? { price, itemName in
+                                tempPrice = price
+                                tempItemName = itemName
+                                manualPriceText = String(format: "%.2f", price)
+                                showingPriceConfirmation = true
+                            } : nil
+                        )
+                        
+                        // Manual price entry overlay
+                        if showingManualPriceEntry {
+                            Color.black.opacity(0.3)
+                                .ignoresSafeArea()
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.6)) {
+                                        showingManualPriceEntry = false
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        showingMinimizedPopup = true
+                                    }
+                                }
+                            
+                            VStack(spacing: 20) {
+                                Text("Enter Price Manually")
+                                    .font(.headline)
+                                Text("Enter the correct price for:")
+                                    .font(.subheadline)
+                                Text(tempItemName)
+                                    .font(.body)
+                                    .multilineTextAlignment(.center)
+                                
+                                TextField("Price", text: $manualPriceText)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .keyboardType(.decimalPad)
+                                    .frame(width: 120)
+                                
+                                HStack(spacing: 20) {
+                                    Button("Cancel") {
+                                        showingManualPriceEntry = false
+                                        manualPriceText = ""
+                                    }
+                                    .foregroundColor(.red)
+                                    
+                                    Button("Confirm") {
+                                        if let manualPrice = Double(manualPriceText), manualPrice > 0 {
+                                            selectedPrice = manualPrice
+                                            selectedItemName = tempItemName
+                                            presentationMode.wrappedValue.dismiss()
+                                        }
+                                    }
+                                    .foregroundColor(.blue)
+                                    .disabled(manualPriceText.isEmpty || Double(manualPriceText) == nil)
+                                }
+                            }
+                            .padding(20)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                            .shadow(radius: 10)
+                            .frame(maxWidth: 300)
+                            .scaleEffect(showingManualPriceEntry ? 1.0 : 0.1)
+                            .opacity(showingManualPriceEntry ? 1.0 : 0.0)
+                            .animation(.easeInOut(duration: 0.6), value: showingManualPriceEntry)
                         }
-                    )
+                        
+                        // Minimized notification bell
+                        if showingMinimizedPopup {
+                            VStack {
+                                Spacer()
+                                HStack {
+                                    Spacer()
+                                    Button(action: {
+                                        withAnimation(.easeInOut(duration: 0.6)) {
+                                            showingMinimizedPopup = false
+                                        }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                            showingManualPriceEntry = true
+                                        }
+                                    }) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color.blue)
+                                                .frame(width: 50, height: 50)
+                                            
+                                            Image(systemName: "bell.fill")
+                                                .foregroundColor(.white)
+                                                .font(.system(size: 20))
+                                        }
+                                    }
+                                    .scaleEffect(showingMinimizedPopup ? 1.0 : 0.1)
+                                    .opacity(showingMinimizedPopup ? 1.0 : 0.0)
+                                    .animation(.easeInOut(duration: 0.6), value: showingMinimizedPopup)
+                                    .padding(.trailing, 20)
+                                    .padding(.bottom, 20)
+                                }
+                            }
+                        }
+                    }
                 } else {
                     Text("Invalid website selection")
                         .foregroundColor(.red)
@@ -244,6 +346,22 @@ struct SearchPriceWebView: View {
                     Text("Browse the website to view items and prices. Items will not be added to your cart unless 'Select Items?' is enabled.")
                 }
             }
+            .alert("Confirm Price", isPresented: $showingPriceConfirmation) {
+                Button("Yes") {
+                    selectedPrice = tempPrice
+                    selectedItemName = tempItemName
+                    presentationMode.wrappedValue.dismiss()
+                }
+                Button("No") {
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        showingManualPriceEntry = true
+                    }
+                    showingMinimizedPopup = false
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("\(tempItemName)\n\n**$\(String(format: "%.2f", tempPrice))**\n\nCorrect?")
+            }
         }
     }
 }
@@ -254,10 +372,16 @@ struct SearchWebView: UIViewRepresentable {
     @Binding var selectedItemName: String?
     let selectItemsMode: Bool
     var onDismiss: () -> Void
+    var onPriceSelected: ((Double, String) -> Void)?
     
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
         webView.navigationDelegate = context.coordinator
+        
+        // Enable user interaction
+        webView.isUserInteractionEnabled = true
+        webView.scrollView.isUserInteractionEnabled = true
+        webView.allowsBackForwardNavigationGestures = false
         
         // Only inject JavaScript if select items mode is enabled
         if selectItemsMode {
@@ -603,10 +727,14 @@ struct SearchWebView: UIViewRepresentable {
                    let itemName = data["itemName"] as? String {
                     
                     DispatchQueue.main.async {
-                        self.parent.selectedPrice = price
-                        self.parent.selectedItemName = itemName
-                        // Call the dismiss closure
-                        self.parent.onDismiss()
+                        if let onPriceSelected = self.parent.onPriceSelected {
+                            onPriceSelected(price, itemName)
+                        } else {
+                            // Fallback to original behavior
+                            self.parent.selectedPrice = price
+                            self.parent.selectedItemName = itemName
+                            self.parent.onDismiss()
+                        }
                     }
                 }
             }

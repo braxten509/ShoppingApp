@@ -359,6 +359,83 @@ enum MeasurementUnit: String, CaseIterable {
         case .cans: return "Cans"
         }
     }
+    
+    var singularForm: String {
+        switch self {
+        case .pounds: return "pound"
+        case .ounces: return "ounce"
+        case .grams: return "gram"
+        case .kilograms: return "kilogram"
+        case .tons: return "ton"
+        case .fluidOunces: return "fluid ounce"
+        case .cups: return "cup"
+        case .pints: return "pint"
+        case .quarts: return "quart"
+        case .gallons: return "gallon"
+        case .milliliters: return "milliliter"
+        case .liters: return "liter"
+        case .inches: return "inch"
+        case .feet: return "foot"
+        case .yards: return "yard"
+        case .meters: return "meter"
+        case .centimeters: return "centimeter"
+        case .millimeters: return "millimeter"
+        case .squareFeet: return "square foot"
+        case .squareMeters: return "square meter"
+        case .squareInches: return "square inch"
+        case .pieces: return "piece"
+        case .dozen: return "dozen"
+        case .units: return "unit"
+        case .each: return "each"
+        case .pairs: return "pair"
+        case .packs: return "pack"
+        case .boxes: return "box"
+        case .bags: return "bag"
+        case .bottles: return "bottle"
+        case .cans: return "can"
+        }
+    }
+    
+    var pluralForm: String {
+        switch self {
+        case .pounds: return "pounds"
+        case .ounces: return "ounces"
+        case .grams: return "grams"
+        case .kilograms: return "kilograms"
+        case .tons: return "tons"
+        case .fluidOunces: return "fluid ounces"
+        case .cups: return "cups"
+        case .pints: return "pints"
+        case .quarts: return "quarts"
+        case .gallons: return "gallons"
+        case .milliliters: return "milliliters"
+        case .liters: return "liters"
+        case .inches: return "inches"
+        case .feet: return "feet"
+        case .yards: return "yards"
+        case .meters: return "meters"
+        case .centimeters: return "centimeters"
+        case .millimeters: return "millimeters"
+        case .squareFeet: return "square feet"
+        case .squareMeters: return "square meters"
+        case .squareInches: return "square inches"
+        case .pieces: return "pieces"
+        case .dozen: return "dozen"
+        case .units: return "units"
+        case .each: return "each"
+        case .pairs: return "pairs"
+        case .packs: return "packs"
+        case .boxes: return "boxes"
+        case .bags: return "bags"
+        case .bottles: return "bottles"
+        case .cans: return "cans"
+        }
+    }
+    
+    func displayText(for quantity: Double) -> String {
+        let isPlural = quantity != 1.0
+        return isPlural ? pluralForm : singularForm
+    }
 }
 
 struct CompletedShoppingTrip: Identifiable, Codable {

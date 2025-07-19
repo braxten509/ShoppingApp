@@ -98,6 +98,7 @@ struct SettingsView: View {
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
                                     .frame(width: 80)
                                     .keyboardType(.decimalPad)
+                                    .keyboardToolbar()
                                 
                                 Text("%")
                                     .font(.subheadline)

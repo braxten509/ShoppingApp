@@ -182,6 +182,26 @@ struct APIKeysView: View {
             } header: {
                 Text("Perplexity Configuration")
             }
+            
+            Section {
+                HStack {
+                    Text("Last synced")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    if let lastSyncDate = settingsService.lastSyncDate {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(lastSyncDate, style: .date)
+                                .foregroundColor(.secondary)
+                            Text(formatTimeWithTimezone(lastSyncDate))
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                    } else {
+                        Text("Never")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
         }
         .navigationTitle("API Keys")
         .navigationBarTitleDisplayMode(.inline)
@@ -190,7 +210,6 @@ struct APIKeysView: View {
                 Button(action: syncCredits) {
                     HStack(spacing: 4) {
                         Text("Sync")
-                            .font(.caption)
                         if isSyncing {
                             ProgressView()
                                 .scaleEffect(0.8)
@@ -354,6 +373,17 @@ struct APIKeysView: View {
         print("✅ Perplexity sync completed")
         print("✅ All syncs completed")
         isSyncing = false
+    }
+    
+    private func formatTimeWithTimezone(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone.current
+        
+        let timeString = formatter.string(from: date)
+        let timezoneAbbreviation = TimeZone.current.abbreviation() ?? ""
+        
+        return "\(timeString) \(timezoneAbbreviation)"
     }
 }
 

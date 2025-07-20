@@ -23,11 +23,6 @@ class SettingsService: ObservableObject {
         }
     }
 
-    @Published var selectedModelForTagIdentification: String {
-        didSet {
-            UserDefaults.standard.set(selectedModelForTagIdentification, forKey: "selectedModelForTagIdentification")
-        }
-    }
 
     @Published var openAIAPIKey: String {
         didSet {
@@ -165,9 +160,8 @@ class SettingsService: ObservableObject {
 
     init() {
         self.useAIModels = UserDefaults.standard.bool(forKey: "useAIModels")
-        self.selectedModelForTaxRate = UserDefaults.standard.string(forKey: "selectedModelForTaxRate") ?? "sonar-pro"
+        self.selectedModelForTaxRate = UserDefaults.standard.string(forKey: "selectedModelForTaxRate") ?? "sonar"
         self.selectedModelForPhotoPrice = UserDefaults.standard.string(forKey: "selectedModelForPhotoPrice") ?? "gpt-4o-mini"
-        self.selectedModelForTagIdentification = UserDefaults.standard.string(forKey: "selectedModelForTagIdentification") ?? "sonar-pro"
         self.openAIAPIKey = UserDefaults.standard.string(forKey: "openAIAPIKey") ?? ""
         self.perplexityAPIKey = UserDefaults.standard.string(forKey: "perplexityAPIKey") ?? ""
         
@@ -256,9 +250,8 @@ class SettingsService: ObservableObject {
     
     
     func resetAllModels() {
-        selectedModelForTaxRate = "sonar-pro"
+        selectedModelForTaxRate = "sonar"
         selectedModelForPhotoPrice = "gpt-4o-mini"
-        selectedModelForTagIdentification = "sonar-pro"
     }
     
     // MARK: - Store Management

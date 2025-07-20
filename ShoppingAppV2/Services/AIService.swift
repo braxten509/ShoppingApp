@@ -13,9 +13,40 @@ class AIService: ObservableObject {
         self.historyService = historyService
     }
 
-    private func extractContent(from data: Data, for model: String) throws -> String {
+    private func extractContent(from data: Data, for model: String) throws -> (content: String, usage: AIResponse.Usage?) {
         let response = try JSONDecoder().decode(AIResponse.self, from: data)
-        return response.choices.first?.message.content ?? ""
+        let content = response.choices.first?.message.content ?? ""
+        return (content, response.usage)
+    }
+    
+    private func estimateTokens(_ text: String) -> Int {
+        // Improved token estimation based on OpenAI's cl100k_base tokenizer patterns
+        let characterCount = text.count
+        let baseEstimate = max(1, characterCount / 4)
+        
+        var tokenCount = baseEstimate
+        
+        // Add overhead for JSON structure
+        if text.contains("{") || text.contains("[") {
+            tokenCount = Int(Double(tokenCount) * 1.15)
+        }
+        
+        // Add overhead for complex punctuation and special characters
+        let specialCharCount = text.filter { ".,!?;:()[]{}\"'`-_=+*/\\|@#$%^&<>".contains($0) }.count
+        if specialCharCount > characterCount / 20 {
+            tokenCount = Int(Double(tokenCount) * 1.1)
+        }
+        
+        // Add overhead for newlines and formatting
+        let newlineCount = text.filter { $0.isNewline }.count
+        if newlineCount > 5 {
+            tokenCount += newlineCount / 2
+        }
+        
+        // Conservative multiplier
+        tokenCount = Int(Double(tokenCount) * 1.2)
+        
+        return max(1, tokenCount)
     }
     
 
@@ -35,7 +66,7 @@ class AIService: ObservableObject {
         
         print("Raw response from \(model) for tax analysis: \(String(data: data, encoding: .utf8) ?? "No response")")
 
-        let content = try extractContent(from: data, for: model)
+        let (content, usage) = try extractContent(from: data, for: model)
         
         let cleanedContent = extractJSON(from: content)
         
@@ -84,27 +115,41 @@ class AIService: ObservableObject {
             }
         }
         
+        // Calculate accurate cost based on actual or estimated token usage
+        let inputTokens = usage?.prompt_tokens ?? estimateTokens(prompt)
+        let outputTokens = usage?.completion_tokens ?? estimateTokens(content)
+        let actualCost = PricingService.shared.calculateCost(for: model, inputTokens: inputTokens, outputTokens: outputTokens)
+        
+        // Debug logging for token usage accuracy
+        if let actualUsage = usage {
+            print("Tax analysis - Actual tokens: input=\(actualUsage.prompt_tokens), output=\(actualUsage.completion_tokens)")
+            let estimatedInput = estimateTokens(prompt)
+            let estimatedOutput = estimateTokens(content)
+            print("Tax analysis - Estimated tokens: input=\(estimatedInput), output=\(estimatedOutput)")
+            print("Tax analysis - Estimation accuracy: input=\(Int((Double(estimatedInput)/Double(actualUsage.prompt_tokens))*100))%, output=\(Int((Double(estimatedOutput)/Double(actualUsage.completion_tokens))*100))%")
+        }
+        
         // Track this interaction with billing and history
         historyService.add(item: PromptHistoryItem(
             timestamp: Date(),
             type: "Tax Lookup",
             prompt: prompt,
             response: content,
-            estimatedCost: 0.001, // Estimated cost for tax lookup
-            inputTokens: prompt.count / 4, // Rough token estimate
-            outputTokens: content.count / 4,
+            estimatedCost: actualCost,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
             itemName: itemName,
             aiService: getServiceName(for: model),
             model: model
         ))
-        billingService.addCost(amount: 0.001)
+        billingService.addCost(amount: actualCost)
         
         // Deduct from credits if we have a sync date
         if let _ = settingsService.lastSyncDate {
             if model.hasPrefix("gpt-") {
-                settingsService.deductOpenAICredits(0.001)
+                settingsService.deductOpenAICredits(actualCost)
             } else if model.hasPrefix("sonar") {
-                settingsService.deductPerplexityCredits(0.001)
+                settingsService.deductPerplexityCredits(actualCost)
             }
         }
         
@@ -148,7 +193,7 @@ class AIService: ObservableObject {
         
         print("Raw response from \(model) for price tag analysis: \(String(data: data, encoding: .utf8) ?? "No response")")
 
-        let content = try extractContent(from: data, for: model)
+        let (content, usage) = try extractContent(from: data, for: model)
         
         let cleanedContent = extractJSON(from: content)
 
@@ -176,27 +221,44 @@ class AIService: ObservableObject {
         // Use AI-provided analysis issues (the AI should explain any default values it returns)
         // No client-side fallback - we want the AI to provide context-specific explanations
         
+        // Calculate accurate cost based on actual or estimated token usage
+        // For image analysis, add estimated image tokens if usage not provided
+        let baseInputTokens = usage?.prompt_tokens ?? estimateTokens(prompt)
+        let inputTokens = usage?.prompt_tokens ?? (baseInputTokens + 765) // Add ~765 tokens for image if no usage data
+        let outputTokens = usage?.completion_tokens ?? estimateTokens(content)
+        let actualCost = PricingService.shared.calculateCost(for: model, inputTokens: inputTokens, outputTokens: outputTokens)
+        
+        // Debug logging for token usage accuracy
+        if let actualUsage = usage {
+            print("Image analysis - Actual tokens: input=\(actualUsage.prompt_tokens), output=\(actualUsage.completion_tokens)")
+            let estimatedInput = estimateTokens(prompt) + 765 // Add image tokens to estimation
+            let estimatedOutput = estimateTokens(content)
+            print("Image analysis - Estimated tokens: input=\(estimatedInput), output=\(estimatedOutput)")
+        } else {
+            print("Image analysis - No usage data returned, using estimates with image tokens")
+        }
+        
         // Track this interaction with billing and history
         historyService.add(item: PromptHistoryItem(
             timestamp: Date(),
             type: "Image Analysis",
             prompt: prompt,
             response: content,
-            estimatedCost: 0.005, // Estimated cost for image analysis
-            inputTokens: prompt.count / 4,
-            outputTokens: content.count / 4,
+            estimatedCost: actualCost,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
             itemName: priceTagInfo.name,
             aiService: getServiceName(for: model),
             model: model
         ))
-        billingService.addCost(amount: 0.005)
+        billingService.addCost(amount: actualCost)
         
         // Deduct from credits if we have a sync date
         if let _ = settingsService.lastSyncDate {
             if model.hasPrefix("gpt-") {
-                settingsService.deductOpenAICredits(0.005)
+                settingsService.deductOpenAICredits(actualCost)
             } else if model.hasPrefix("sonar") {
-                settingsService.deductPerplexityCredits(0.005)
+                settingsService.deductPerplexityCredits(actualCost)
             }
         }
         
@@ -238,150 +300,6 @@ class AIService: ObservableObject {
         return updatedPriceTagInfo
     }
     
-    func searchPrice(itemName: String, specification: String?, website: String, location: String?) async throws -> PriceSearchResult {
-        let model = settingsService.selectedModelForTagIdentification
-        let apiKey = getAPIKey(for: model)
-        let url = getAPIURL(for: model)
-        
-        // Build the search URL based on selected website
-        let searchURL = buildSearchURL(for: website, itemName: itemName, specification: specification)
-        let locationContext = location ?? "unknown location"
-        
-        let prompt = """
-        Search for the item "\(itemName)" \(specification != nil ? "with specification: \(specification!)" : "") on \(website) at this URL: \(searchURL)
-        
-        Current location: \(locationContext)
-        
-        Instructions:
-        1. Go to the URL and search for products matching "\(itemName)" \(specification != nil ? "with specification \(specification!)" : "")
-        2. If you find similar items, return:
-           - found: true
-           - itemName: exact product name from website
-           - price: price as number only (no $ symbol)
-           - description: brief product description (1-2 sentences)
-           - sourceURL: the specific product page URL
-        3. If NO similar items are found, return:
-           - found: false
-           - itemName: ""
-           - price: null
-           - description: ""
-           - sourceURL: null
-        
-        Return response as JSON in this exact format:
-        {
-            "found": boolean,
-            "itemName": "string",
-            "price": number or null,
-            "description": "string",
-            "sourceURL": "string or null"
-        }
-        """
-        
-        let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
-        
-        do {
-            let result = try JSONDecoder().decode(PriceSearchResult.self, from: data)
-            
-            // Track this interaction with billing and history
-            historyService.add(item: PromptHistoryItem(
-                timestamp: Date(),
-                type: "Price Search",
-                prompt: prompt,
-                response: String(data: data, encoding: .utf8) ?? "",
-                estimatedCost: 0.003,
-                inputTokens: prompt.count / 4,
-                outputTokens: (String(data: data, encoding: .utf8) ?? "").count / 4,
-                itemName: itemName,
-                aiService: getServiceName(for: model),
-                model: model
-            ))
-            billingService.addCost(amount: 0.003)
-            
-            // Deduct from credits if we have a sync date
-            if let _ = settingsService.lastSyncDate {
-                if model.hasPrefix("gpt-") {
-                    settingsService.deductOpenAICredits(0.003)
-                } else if model.hasPrefix("sonar") {
-                    settingsService.deductPerplexityCredits(0.003)
-                }
-            }
-            
-            return result
-        } catch {
-            // If JSON parsing fails, return not found
-            return PriceSearchResult(found: false, description: "Unable to parse search results")
-        }
-    }
-    
-    private func buildSearchURL(for website: String, itemName: String, specification: String?) -> String {
-        let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
-        return settingsService.buildSearchURL(for: website, searchTerm: searchTerm) ?? ""
-    }
-    
-    func guessPrice(itemName: String, location: String?, storeName: String? = nil, brand: String? = nil, additionalDetails: String?) async throws -> (price: Double?, sourceURL: String?) {
-        let model = settingsService.selectedModelForTagIdentification
-        let apiKey = getAPIKey(for: model)
-        let url = getAPIURL(for: model)
-
-        let prompt = """
-        Find the price of "\(itemName)" \(brand != nil ? "brand: \(brand!)" : "") \(additionalDetails != nil ? "details: \(additionalDetails!)" : "") at \(storeName ?? "a major retailer").
-        Respond with ONLY a valid JSON object in the format {"estimatedPrice": <price>, "sourceURL": "<url>", "explanation": "<explanation>"}.
-        If no price is found, return {"estimatedPrice": null, "sourceURL": null, "explanation": "<specific reason>"}.
-        """
-
-        let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
-        
-        print("Raw response from \(model) for price guess: \(String(data: data, encoding: .utf8) ?? "No response")")
-
-        let content = try extractContent(from: data, for: model)
-        
-        let cleanedContent = extractJSON(from: content)
-        
-        struct PriceResponse: Codable {
-            let estimatedPrice: Double?
-            let sourceURL: String?
-            let explanation: String?
-        }
-        
-        guard let jsonData = cleanedContent.data(using: .utf8),
-              let priceResponse = try? JSONDecoder().decode(PriceResponse.self, from: jsonData) else {
-            throw NSError(domain: "APIError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode price response"])
-        }
-        
-        // Track this interaction with billing and history
-        historyService.add(item: PromptHistoryItem(
-            timestamp: Date(),
-            type: "Price Guess",
-            prompt: prompt,
-            response: content,
-            estimatedCost: 0.002,
-            inputTokens: prompt.count / 4,
-            outputTokens: content.count / 4,
-            itemName: itemName,
-            aiService: getServiceName(for: model),
-            model: model
-        ))
-        billingService.addCost(amount: 0.002)
-        
-        // Deduct from credits if we have a sync date
-        if let _ = settingsService.lastSyncDate {
-            if model.hasPrefix("gpt-") {
-                settingsService.deductOpenAICredits(0.002)
-            } else if model.hasPrefix("sonar") {
-                settingsService.deductPerplexityCredits(0.002)
-            }
-        }
-        
-        // If price is nil, throw a descriptive error using AI's explanation
-        if priceResponse.estimatedPrice == nil {
-            let errorMessage = priceResponse.explanation ?? "Unable to find current pricing for '\(itemName)'"
-            throw NSError(domain: "PriceGuessError", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: errorMessage
-            ])
-        }
-        
-        return (priceResponse.estimatedPrice, priceResponse.sourceURL)
-    }
 
 
     private func performRequest(prompt: String, apiKey: String, url: URL, model: String, image: UIImage? = nil) async throws -> (Data, URLResponse) {

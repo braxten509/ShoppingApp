@@ -15,14 +15,7 @@ struct AISettingsView: View {
                 }
                 .pickerStyle(.menu)
                 
-                Picker("Photo Price Analysis", selection: $settingsService.selectedModelForPhotoPrice) {
-                    ForEach(settingsService.aiModels, id: \.self) { model in
-                        Text(model).tag(model)
-                    }
-                }
-                .pickerStyle(.menu)
-                
-                Picker("Tag Identification", selection: $settingsService.selectedModelForTagIdentification) {
+                Picker("Photo Analysis", selection: $settingsService.selectedModelForPhotoPrice) {
                     ForEach(settingsService.aiModels, id: \.self) { model in
                         Text(model).tag(model)
                     }
@@ -74,7 +67,7 @@ struct AISettingsView: View {
                 settingsService.resetAllModels()
             }
         } message: {
-            Text("Reset all AI models to sonar-pro?")
+            Text("Reset Tax Rate Analysis to sonar and Photo Analysis to gpt-4o-mini?")
         }
         // Note: Auto-search dependency logic is now handled directly in SettingsService property setters
     }

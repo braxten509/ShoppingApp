@@ -36,8 +36,8 @@ struct PromptsHistoryView: View {
                                         .font(.headline)
                                         .foregroundColor(colorForItem(item))
                                     
-                                    if let aiService = item.aiService, let _ = item.model {
-                                        Text("\(aiService)")
+                                    if let aiService = item.aiService, let model = item.model {
+                                        Text("\(aiService): \(model)")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
                                     }
@@ -46,7 +46,7 @@ struct PromptsHistoryView: View {
                                 Spacer()
                                 
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text("$\(item.estimatedCost, specifier: "%.6f")")
+                                    Text("$\(item.estimatedCost, specifier: "%.3f")")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                     Text(item.timestamp, style: .relative)
@@ -166,7 +166,7 @@ struct PromptDetailView: View {
                                 .foregroundColor(colorForPrompt(prompt))
                             
                             if let aiService = prompt.aiService, let model = prompt.model {
-                                Text("\(aiService) - \(model)")
+                                Text("\(aiService): \(model)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -230,7 +230,7 @@ struct PromptDetailView: View {
                             Text("Total Cost")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            Text("$\(prompt.estimatedCost, specifier: "%.6f")")
+                            Text("$\(prompt.estimatedCost, specifier: "%.3f")")
                                 .font(.title3)
                                 .fontWeight(.medium)
                                 .foregroundColor(.primary)

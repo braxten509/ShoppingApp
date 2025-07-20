@@ -139,8 +139,6 @@ struct PriceSearchView: View {
     @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
     @State private var showingHelpAlert = false
-    @State private var showingManualPriceEntry = false
-    @State private var manualPriceText: String = ""
     
     private var searchURL: URL? {
         let searchTerm = specification != nil ? "\(itemName) \(specification!)" : itemName
@@ -167,93 +165,15 @@ struct PriceSearchView: View {
                             }
                         )
                         
-                        // Manual price entry overlay
-                        if showingManualPriceEntry {
-                            Color.black.opacity(0.3)
-                                .ignoresSafeArea()
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                                        showingManualPriceEntry = false
-                                    }
-                                    manualPriceText = ""
-                                }
-                            
-                            VStack(spacing: 20) {
-                                Text("Add Price")
-                                    .font(.title2)
-                                    .fontWeight(.semibold)
-                                
-                                TextField("$0.00", text: $manualPriceText)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .keyboardType(.decimalPad)
-                                    .keyboardToolbar()
-                                    .font(.title)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 150)
-                                
-                                HStack(spacing: 20) {
-                                    Button("Cancel") {
-                                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                                            showingManualPriceEntry = false
-                                        }
-                                        manualPriceText = ""
-                                    }
-                                    .foregroundColor(.red)
-                                    .font(.headline)
-                                    
-                                    Button("Done") {
-                                        if let manualPrice = Double(manualPriceText), manualPrice > 0 {
-                                            selectedPrice = manualPrice
-                                            selectedItemName = "Selected Item"
-                                            presentationMode.wrappedValue.dismiss()
-                                        }
-                                    }
-                                    .foregroundColor(.blue)
-                                    .font(.headline)
-                                    .fontWeight(.semibold)
-                                    .disabled(manualPriceText.isEmpty || Double(manualPriceText) == nil || Double(manualPriceText) ?? 0 <= 0)
-                                }
+                        // Manual price entry overlay using reusable component
+                        ManualPriceEntryOverlay(
+                            itemName: itemName,
+                            onPriceSelected: { price, name in
+                                selectedPrice = price
+                                selectedItemName = name
+                                presentationMode.wrappedValue.dismiss()
                             }
-                            .padding(30)
-                            .background(Color(.systemBackground))
-                            .cornerRadius(16)
-                            .shadow(radius: 20)
-                            .frame(maxWidth: 300)
-                            .scaleEffect(showingManualPriceEntry ? 1.0 : 0.1)
-                            .opacity(showingManualPriceEntry ? 1.0 : 0.0)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: showingManualPriceEntry)
-                        }
-                        
-                        // Floating "Add Price" button
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                Button(action: {
-                                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                                        showingManualPriceEntry = true
-                                    }
-                                }) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "plus.circle.fill")
-                                            .font(.system(size: 18, weight: .semibold))
-                                        Text("Add Price")
-                                            .font(.system(size: 16, weight: .semibold))
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(Color.blue)
-                                    .clipShape(Capsule())
-                                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-                                }
-                                .scaleEffect(showingManualPriceEntry ? 0.0 : 1.0)
-                                .opacity(showingManualPriceEntry ? 0.0 : 1.0)
-                                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: showingManualPriceEntry)
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 20)
-                            }
-                        }
+                        )
                     }
                 } else {
                     Text("Invalid website selection")

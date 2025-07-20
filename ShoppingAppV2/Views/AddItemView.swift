@@ -11,8 +11,8 @@ struct AddItemView: View {
     let prefillName: String?
     let prefillPrice: Double?
     
-    @State private var name = ""
-    @State private var costString = ""
+    @State private var name: String
+    @State private var costString: String
     @State private var taxMode: TaxMode = .defaultMode
     @State private var customTaxRateString = "0.00"
     @State private var detectedTaxRate: Double? = nil
@@ -34,12 +34,19 @@ struct AddItemView: View {
     
     // Initializer to support prefilled data
     init(store: ShoppingListStore, locationManager: LocationManager, aiService: AIService, settingsService: SettingsService, prefillName: String? = nil, prefillPrice: Double? = nil) {
+        print("🏗️ AddItemView init called with prefillName: '\(prefillName ?? "nil")', prefillPrice: \(prefillPrice?.description ?? "nil")")
         self.store = store
         self.locationManager = locationManager
         self.aiService = aiService
         self.settingsService = settingsService
         self.prefillName = prefillName
         self.prefillPrice = prefillPrice
+        
+        // Initialize @State variables with prefill values
+        self._name = State(initialValue: prefillName ?? "")
+        self._costString = State(initialValue: prefillPrice != nil ? String(format: "%.2f", prefillPrice!) : "")
+        
+        print("🏗️ Initialized name: '\(prefillName ?? "")', costString: '\(prefillPrice != nil ? String(format: "%.2f", prefillPrice!) : "")'")
     }
     
     enum TaxMode: String, CaseIterable {
@@ -360,19 +367,16 @@ struct AddItemView: View {
     }
     
     private func setupInitialValues() {
+        print("📋 AddItemView setupInitialValues called")
+        print("📋 Current name: '\(name)'")
+        print("📋 Current costString: '\(costString)'")
+        
         if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
             if let defaultStore = settingsService.getDefaultStore() {
                 selectedWebsite = defaultStore.name
             } else {
                 selectedWebsite = settingsService.stores.first!.name
             }
-        }
-        
-        if let prefillName = prefillName, !prefillName.isEmpty {
-            name = prefillName
-        }
-        if let prefillPrice = prefillPrice {
-            costString = String(format: "%.2f", prefillPrice)
         }
     }
     

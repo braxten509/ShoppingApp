@@ -120,7 +120,7 @@ struct CalculatorView: View {
     
     private var locationHeader: some View {
         VStack(spacing: 4) {
-            if let placemark = locationManager.placemark {
+            if settingsService.locationAccessEnabled, let placemark = locationManager.placemark {
                 HStack {
                     Image(systemName: "location.fill")
                         .foregroundColor(.blue)
@@ -137,12 +137,6 @@ struct CalculatorView: View {
                         }
                     }
                     Spacer()
-                    
-                    if settingsService.useManualTaxRate {
-                        Text("General state tax: \(settingsService.manualTaxRate, specifier: "%.1f")%")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
@@ -306,10 +300,10 @@ struct CalculatorView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(isProcessingImage ? Color.gray : Color.blue)
+                    .background(isProcessingImage || !settingsService.aiEnabled || !settingsService.internetAccessEnabled ? Color.gray : Color.blue)
                     .cornerRadius(12)
                 }
-                .disabled(isProcessingImage)
+                .disabled(isProcessingImage || !settingsService.aiEnabled || !settingsService.internetAccessEnabled)
                 
                 Button(action: {
                     showingAddItem = true

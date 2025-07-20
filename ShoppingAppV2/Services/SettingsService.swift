@@ -41,6 +41,42 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var locationAccessEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(locationAccessEnabled, forKey: "locationAccessEnabled")
+            if !locationAccessEnabled && !useManualTaxRate {
+                useManualTaxRate = true
+            }
+        }
+    }
+    
+    @Published var aiEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(aiEnabled, forKey: "aiEnabled")
+            if !aiEnabled {
+                // When AI is disabled, also disable location access and force manual tax
+                locationAccessEnabled = false
+                if !useManualTaxRate {
+                    useManualTaxRate = true
+                }
+            }
+        }
+    }
+    
+    @Published var internetAccessEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(internetAccessEnabled, forKey: "internetAccessEnabled")
+            if !internetAccessEnabled {
+                // When Internet is disabled, also disable AI and location access
+                aiEnabled = false
+                locationAccessEnabled = false
+                if !useManualTaxRate {
+                    useManualTaxRate = true
+                }
+            }
+        }
+    }
+    
     @Published var useManualTaxRate: Bool {
         didSet {
             UserDefaults.standard.set(useManualTaxRate, forKey: "useManualTaxRate")
@@ -93,6 +129,11 @@ class SettingsService: ObservableObject {
         "sonar-pro",
         "sonar"
     ]
+    
+    // Computed property to determine if manual tax should be forced
+    var shouldForceManualTax: Bool {
+        return !locationAccessEnabled || !aiEnabled || !internetAccessEnabled
+    }
 
     init() {
         self.useAIModels = UserDefaults.standard.bool(forKey: "useAIModels")
@@ -101,7 +142,25 @@ class SettingsService: ObservableObject {
         self.selectedModelForTagIdentification = UserDefaults.standard.string(forKey: "selectedModelForTagIdentification") ?? "sonar-pro"
         self.openAIAPIKey = UserDefaults.standard.string(forKey: "openAIAPIKey") ?? ""
         self.perplexityAPIKey = UserDefaults.standard.string(forKey: "perplexityAPIKey") ?? ""
-        self.useManualTaxRate = UserDefaults.standard.bool(forKey: "useManualTaxRate")
+        
+        // Check if values exist in UserDefaults, if not set defaults to true
+        if UserDefaults.standard.object(forKey: "locationAccessEnabled") == nil {
+            UserDefaults.standard.set(true, forKey: "locationAccessEnabled")
+        }
+        if UserDefaults.standard.object(forKey: "aiEnabled") == nil {
+            UserDefaults.standard.set(true, forKey: "aiEnabled")
+        }
+        if UserDefaults.standard.object(forKey: "internetAccessEnabled") == nil {
+            UserDefaults.standard.set(true, forKey: "internetAccessEnabled")
+        }
+        
+        self.locationAccessEnabled = UserDefaults.standard.bool(forKey: "locationAccessEnabled")
+        self.aiEnabled = UserDefaults.standard.bool(forKey: "aiEnabled")
+        self.internetAccessEnabled = UserDefaults.standard.bool(forKey: "internetAccessEnabled")
+        
+        // Force manual tax rate if location or AI is disabled
+        let storedManualTax = UserDefaults.standard.bool(forKey: "useManualTaxRate")
+        self.useManualTaxRate = storedManualTax
         // Set a reasonable default tax rate if none exists (6% is a common US average)
         let storedTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
         self.manualTaxRate = storedTaxRate > 0 ? storedTaxRate : 6.0

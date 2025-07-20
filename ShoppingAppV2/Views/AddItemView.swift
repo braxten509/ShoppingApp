@@ -57,6 +57,14 @@ struct AddItemView: View {
         var id: String { self.rawValue }
     }
     
+    private var availableTaxModes: [TaxMode] {
+        if settingsService.aiEnabled && settingsService.internetAccessEnabled {
+            return TaxMode.allCases
+        } else {
+            return TaxMode.allCases.filter { $0 != .ai }
+        }
+    }
+    
     private var actualCost: Double {
         let baseCost = Double(costString) ?? 0
         if isPriceByMeasurement {
@@ -135,9 +143,9 @@ struct AddItemView: View {
                 setupPriceSearch()
             }) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(name.isEmpty ? .gray : .purple)
+                    .foregroundColor((name.isEmpty || !settingsService.internetAccessEnabled) ? .gray : .purple)
             }
-            .disabled(name.isEmpty)
+            .disabled(name.isEmpty || !settingsService.internetAccessEnabled)
         }
     }
     
@@ -145,8 +153,10 @@ struct AddItemView: View {
     private var taxModeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker("Tax Mode", selection: $taxMode) {
-                ForEach(TaxMode.allCases, id: \.id) { mode in
-                    Text(mode.rawValue).tag(mode)
+                ForEach(availableTaxModes, id: \.id) { mode in
+                    Text(mode.rawValue)
+                        .foregroundColor(mode == .ai && !settingsService.aiEnabled ? .secondary : .primary)
+                        .tag(mode)
                 }
             }
             .pickerStyle(MenuPickerStyle())

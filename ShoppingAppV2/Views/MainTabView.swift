@@ -37,8 +37,11 @@ struct MainTabView: View {
             )
             .tabItem {
                 Image(systemName: "magnifyingglass")
+                    .foregroundColor(settingsService.internetAccessEnabled ? .primary : .secondary)
                 Text("Search")
+                    .foregroundColor(settingsService.internetAccessEnabled ? .primary : .secondary)
             }
+            .disabled(!settingsService.internetAccessEnabled)
             
             ShoppingHistoryView(historyStore: historyStore, shoppingListStore: store)
                 .tabItem {

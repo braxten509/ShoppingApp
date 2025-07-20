@@ -1,6 +1,6 @@
 //
 //  FileMigration.swift
-//  Combined
+//  ShoppingAppV2
 //
 //  Created by Assistant on 6/18/25.
 //

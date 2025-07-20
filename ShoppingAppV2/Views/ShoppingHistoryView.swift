@@ -4,6 +4,9 @@ struct ShoppingHistoryView: View {
     @ObservedObject var historyStore: ShoppingHistoryStore
     @ObservedObject var shoppingListStore: ShoppingListStore
     @State private var selectedTrip: CompletedShoppingTrip?
+    @State private var shareDocument: ShoppingDataDocument?
+    @State private var tripToShare: CompletedShoppingTrip?
+    @State private var showingFileExporter = false
     
     var body: some View {
         NavigationView {
@@ -27,7 +30,9 @@ struct ShoppingHistoryView: View {
                     List {
                         ForEach(historyStore.completedTrips) { trip in
                             NavigationLink(destination: TripDetailView(trip: trip, shoppingListStore: shoppingListStore, historyStore: historyStore)) {
-                                TripRowView(trip: trip)
+                                TripRowView(trip: trip, onShare: { tripToShare in
+                                    shareTrip(tripToShare)
+                                })
                             }
                         }
                     }
@@ -36,12 +41,33 @@ struct ShoppingHistoryView: View {
             }
             .navigationTitle("Shopping History")
             .navigationBarTitleDisplayMode(.large)
+            .fileExporter(
+                isPresented: $showingFileExporter,
+                document: shareDocument,
+                contentType: .json,
+                defaultFilename: "Trip-\(tripToShare?.completedDate.formatted(date: .abbreviated, time: .omitted) ?? "Unknown")"
+            ) { result in
+                switch result {
+                case .success(_):
+                    break // File exported successfully
+                case .failure(let error):
+                    print("File export failed: \(error)")
+                }
+            }
         }
+    }
+    
+    private func shareTrip(_ trip: CompletedShoppingTrip) {
+        tripToShare = trip
+        let document = FileMigrationManager.shared.createExportDocument(items: trip.items)
+        shareDocument = document
+        showingFileExporter = true
     }
 }
 
 struct TripRowView: View {
     let trip: CompletedShoppingTrip
+    let onShare: (CompletedShoppingTrip) -> Void
     
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -64,6 +90,16 @@ struct TripRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                Button(action: {
+                    onShare(trip)
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundColor(.blue)
+                        .font(.title2)
+                        .padding(8)
+                }
+                .buttonStyle(BorderlessButtonStyle())
+                
                 VStack(alignment: .leading, spacing: 4) {
                     Text(dateFormatter.string(from: trip.completedDate))
                         .font(.headline)

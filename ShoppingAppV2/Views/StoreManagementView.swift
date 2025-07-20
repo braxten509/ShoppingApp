@@ -10,7 +10,7 @@ struct StoreManagementView: View {
     
     var body: some View {
         List {
-            Section(header: Text("Stores"), footer: Text("Use %s in the URL where the search term should be placed")) {
+            Section(header: Text("Stores"), footer: Text("Use %s in the URL where the search term should be placed (optional)")) {
                 ForEach(Array(settingsService.stores.enumerated()), id: \.element.id) { index, store in
                     StoreRowView(store: store, settingsService: settingsService) {
                         editingStore = store
@@ -135,7 +135,7 @@ struct AddEditStoreView: View {
                     TextField("Store Name", text: $name)
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Store URL (use %s for search term)")
+                        Text("Store URL (use %s for search term - optional)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         TextField("Store URL", text: $url, axis: .vertical)
@@ -146,7 +146,7 @@ struct AddEditStoreView: View {
                     }
                 }
                 
-                Section(footer: Text("Example: https://www.walmart.com/search?q=%s\nThe %s will be replaced with the search term.")) {
+                Section(footer: Text("Example: https://www.walmart.com/search?q=%s\nThe %s will be replaced with the search term. URLs without %s will open as-is.")) {
                     EmptyView()
                 }
             }
@@ -189,11 +189,6 @@ struct AddEditStoreView: View {
         }
         
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedURL.contains("%s") {
-            validationMessage = "The URL must contain %s where the search term should be placed."
-            showingValidationAlert = true
-            return
-        }
         
         if isEditing, let store = store,
            let index = settingsService.stores.firstIndex(where: { $0.id == store.id }) {

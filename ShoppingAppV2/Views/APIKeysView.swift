@@ -188,11 +188,15 @@ struct APIKeysView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: syncCredits) {
-                    if isSyncing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
+                    HStack(spacing: 4) {
+                        Text("Sync")
+                            .font(.caption)
+                        if isSyncing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
                 }
                 .disabled(isSyncing)

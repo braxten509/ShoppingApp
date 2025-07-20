@@ -237,19 +237,46 @@ struct CreditSyncWebView: View {
     @State private var isAuthenticated = false
     @State private var authenticationError: String?
     @State private var hasAttemptedSync = false
+    @State private var isWebViewLoading = true
+    @State private var isSyncingCredits = false
     
     var body: some View {
         NavigationView {
             Group {
                 if isAuthenticated {
-                    CreditExtractorWebView(
-                        url: url,
-                        provider: provider,
-                        isPresented: $isPresented,
-                        onCreditsFound: onCreditsFound,
-                        onCompleted: onCompleted,
-                        hasAttemptedSync: $hasAttemptedSync
-                    )
+                    ZStack {
+                        CreditExtractorWebView(
+                            url: url,
+                            provider: provider,
+                            isPresented: $isPresented,
+                            onCreditsFound: { credits in
+                                isSyncingCredits = true
+                                onCreditsFound(credits)
+                            },
+                            onCompleted: onCompleted,
+                            hasAttemptedSync: $hasAttemptedSync,
+                            isLoading: $isWebViewLoading,
+                            onSyncStarted: {
+                                isSyncingCredits = true
+                            }
+                        )
+                        
+                        // Loading overlay for credit sync - only show when actually syncing
+                        if isSyncingCredits && !isWebViewLoading {
+                            Color.gray.opacity(0.8)
+                                .ignoresSafeArea()
+                            
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .scaleEffect(1.5)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                
+                                Text("Syncing \(provider) Credits...")
+                                    .foregroundColor(.white)
+                                    .font(.headline)
+                            }
+                        }
+                    }
                 } else {
                     VStack(spacing: 20) {
                         ProgressView()
@@ -356,6 +383,8 @@ struct CreditExtractorWebView: UIViewRepresentable {
     let onCreditsFound: (Double) -> Void
     let onCompleted: (() -> Void)?
     @Binding var hasAttemptedSync: Bool
+    @Binding var isLoading: Bool
+    let onSyncStarted: () -> Void
     
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -364,6 +393,11 @@ struct CreditExtractorWebView: UIViewRepresentable {
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        
+        // Set loading state
+        DispatchQueue.main.async {
+            self.isLoading = true
+        }
         webView.load(URLRequest(url: url))
         
         return webView
@@ -386,8 +420,15 @@ struct CreditExtractorWebView: UIViewRepresentable {
         }
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            // Wait a moment for the page to fully load
+            // Set loading to false when page finishes loading
+            DispatchQueue.main.async {
+                self.parent.isLoading = false
+            }
+            
+            // Wait a moment for the page to fully load, then extract credits
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                // Notify that sync is starting
+                self.parent.onSyncStarted()
                 self.extractCredits(from: webView)
             }
         }

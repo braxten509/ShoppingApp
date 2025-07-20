@@ -1,8 +1,10 @@
 import SwiftUI
+import WebKit
 
 struct PrivacyView: View {
     @ObservedObject var settingsService: SettingsService
     @Environment(\.presentationMode) var presentationMode
+    @State private var showingClearCacheAlert = false
     
     var body: some View {
         NavigationStack {
@@ -56,6 +58,18 @@ struct PrivacyView: View {
                     Text("ShoppingApp processes data locally when possible. AI features require internet connectivity to external services.")
                         .font(.caption)
                 }
+                
+                Section {
+                    Button("Clear WebView Cache & Cookies") {
+                        showingClearCacheAlert = true
+                    }
+                    .foregroundColor(.red)
+                } header: {
+                    Text("Storage Management")
+                } footer: {
+                    Text("Clears all cached data and cookies from web browsers used in the app, including price search and API key management pages.")
+                        .font(.caption)
+                }
             }
             .navigationTitle("Privacy")
             .navigationBarTitleDisplayMode(.inline)
@@ -66,6 +80,26 @@ struct PrivacyView: View {
                     }
                 }
             }
+            .alert("Clear WebView Data", isPresented: $showingClearCacheAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Clear", role: .destructive) {
+                    clearWebViewData()
+                }
+            } message: {
+                Text("This will clear all cached data and cookies from web browsers used in the app. You may need to log in again to websites.")
+            }
+        }
+    }
+    
+    private func clearWebViewData() {
+        let websiteDataStore = WKWebsiteDataStore.default()
+        
+        // Get all website data types
+        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        
+        // Clear all website data (cache, cookies, local storage, etc.)
+        websiteDataStore.removeData(ofTypes: dataTypes, modifiedSince: Date(timeIntervalSince1970: 0)) {
+            print("✅ Successfully cleared all WebView cache and cookies")
         }
     }
 }

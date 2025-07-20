@@ -134,21 +134,14 @@ class AIService: ObservableObject {
         let url = getAPIURL(for: model)
         
         let prompt = """
-        Analyze the image. Respond with ONLY a valid JSON object in the format:
-        {"name": "<item_name>", "price": <price>, "taxRate": <tax_rate>, "taxDescription": "<description>", "ingredients": "<ingredients_list>", "analysisIssues": ["<issue1>", "<issue2>"]}
+        Analyze the image and extract ONLY the product name and price. Respond with a valid JSON object:
+        {"name": "<item_name>", "price": <price>}
         
         Instructions:
         - name: Extract the exact product name. Use "Unknown Item" only if text is completely unreadable.
-        - price: Extract the numerical price. Use 0 only if no price is visible or readable.
-        - taxRate: Extract tax rate if visible on tag. Use null if no tax info is present (this is normal - tax rates are rarely shown on price tags).
-        - taxDescription: Describe tax source or "Unknown Taxes" if no tax info.
-        - ingredients: Extract full ingredients list if visible, or null if not present.
-        - analysisIssues: Provide specific explanations for any default values you return:
-          * If you return "Unknown Item" for name: explain specifically why (e.g., "Text is too blurry to read", "Product name is cut off in image", "Poor lighting obscures text")
-          * If you return 0 for price: explain specifically why (e.g., "Price sticker is peeled off", "Numbers are too small to read clearly", "Price is partially covered")
-          * Do NOT mention tax rate issues since tax rates are usually not on price tags anyway
+        - price: Extract the numerical price (number only, no $ symbol). Use 0 if no price is visible.
         
-        Always provide genuine, specific explanations based on what you actually observe in the image. Empty array only if all values were successfully extracted.
+        Keep the response minimal - only name and price, nothing else.
         """
 
         let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model, image: image)
@@ -159,10 +152,26 @@ class AIService: ObservableObject {
         
         let cleanedContent = extractJSON(from: content)
 
+        // Parse simplified response
+        struct SimpleResponse: Codable {
+            let name: String
+            let price: Double
+        }
+        
         guard let jsonData = cleanedContent.data(using: .utf8),
-              let priceTagInfo = try? JSONDecoder().decode(PriceTagInfo.self, from: jsonData) else {
+              let simpleResponse = try? JSONDecoder().decode(SimpleResponse.self, from: jsonData) else {
             throw NSError(domain: "APIError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode price tag response"])
         }
+        
+        // Convert to PriceTagInfo with default values for unused fields
+        let priceTagInfo = PriceTagInfo(
+            name: simpleResponse.name,
+            price: simpleResponse.price,
+            taxRate: nil,
+            taxDescription: "Unknown Taxes",
+            ingredients: nil,
+            analysisIssues: nil
+        )
         
         // Use AI-provided analysis issues (the AI should explain any default values it returns)
         // No client-side fallback - we want the AI to provide context-specific explanations

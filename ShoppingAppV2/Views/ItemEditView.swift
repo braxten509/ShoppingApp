@@ -42,6 +42,15 @@ struct ItemEditView: View {
         self._measurementQuantity = State(initialValue: item.wrappedValue.measurementQuantity)
         self._measurementQuantityString = State(initialValue: String(format: "%.1f", item.wrappedValue.measurementQuantity))
         self._selectedMeasurementUnit = State(initialValue: MeasurementUnit(rawValue: item.wrappedValue.measurementUnit) ?? .units)
+        
+        // Initialize selectedWebsite properly to avoid empty string issues
+        let websiteToUse: String
+        if let defaultStore = settingsService.getDefaultStore() {
+            websiteToUse = defaultStore.name
+        } else {
+            websiteToUse = settingsService.stores.first?.name ?? ""
+        }
+        self._selectedWebsite = State(initialValue: websiteToUse)
     }
     
     var body: some View {

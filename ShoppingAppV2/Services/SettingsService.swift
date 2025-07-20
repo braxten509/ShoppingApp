@@ -52,27 +52,37 @@ class SettingsService: ObservableObject {
     
     @Published var aiEnabled: Bool {
         didSet {
+            print("🔧 SettingsService: aiEnabled set to \(aiEnabled)")
             UserDefaults.standard.set(aiEnabled, forKey: "aiEnabled")
             if !aiEnabled {
+                print("🔧 SettingsService: AI disabled - disabling location access, auto-search, and forcing manual tax")
                 // When AI is disabled, also disable location access and force manual tax
                 locationAccessEnabled = false
                 if !useManualTaxRate {
                     useManualTaxRate = true
                 }
+                // Also disable auto-search features
+                autoOpenSearchAfterPhoto = false
+                alwaysSearchIgnorePrice = false
             }
         }
     }
     
     @Published var internetAccessEnabled: Bool {
         didSet {
+            print("🔧 SettingsService: internetAccessEnabled set to \(internetAccessEnabled)")
             UserDefaults.standard.set(internetAccessEnabled, forKey: "internetAccessEnabled")
             if !internetAccessEnabled {
+                print("🔧 SettingsService: Internet disabled - disabling AI, location access, and auto-search")
                 // When Internet is disabled, also disable AI and location access
                 aiEnabled = false
                 locationAccessEnabled = false
                 if !useManualTaxRate {
                     useManualTaxRate = true
                 }
+                // Also disable auto-search features
+                autoOpenSearchAfterPhoto = false
+                alwaysSearchIgnorePrice = false
             }
         }
     }
@@ -98,6 +108,24 @@ class SettingsService: ObservableObject {
     @Published var defaultStoreId: String? {
         didSet {
             UserDefaults.standard.set(defaultStoreId, forKey: "defaultStoreId")
+        }
+    }
+    
+    @Published var autoOpenSearchAfterPhoto: Bool {
+        didSet {
+            print("🔧 SettingsService: autoOpenSearchAfterPhoto set to \(autoOpenSearchAfterPhoto)")
+            UserDefaults.standard.set(autoOpenSearchAfterPhoto, forKey: "autoOpenSearchAfterPhoto")
+            if !autoOpenSearchAfterPhoto {
+                print("🔧 SettingsService: Auto-open search disabled - also disabling always search ignore price")
+                alwaysSearchIgnorePrice = false
+            }
+        }
+    }
+    
+    @Published var alwaysSearchIgnorePrice: Bool {
+        didSet {
+            print("🔧 SettingsService: alwaysSearchIgnorePrice set to \(alwaysSearchIgnorePrice)")
+            UserDefaults.standard.set(alwaysSearchIgnorePrice, forKey: "alwaysSearchIgnorePrice")
         }
     }
     
@@ -165,12 +193,31 @@ class SettingsService: ObservableObject {
         let storedTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
         self.manualTaxRate = storedTaxRate > 0 ? storedTaxRate : 6.0
         self.defaultStoreId = UserDefaults.standard.string(forKey: "defaultStoreId")
+        
+        // Temporarily initialize auto-search settings (will be corrected below)
+        self.autoOpenSearchAfterPhoto = UserDefaults.standard.bool(forKey: "autoOpenSearchAfterPhoto")
+        self.alwaysSearchIgnorePrice = UserDefaults.standard.bool(forKey: "alwaysSearchIgnorePrice")
+        
         // Initialize credit tracking with default "Unknown" state (-1 indicates unknown)
         self.openAICredits = UserDefaults.standard.object(forKey: "openAICredits") as? Double ?? -1.0
         self.perplexityCredits = UserDefaults.standard.object(forKey: "perplexityCredits") as? Double ?? -1.0
         self.lastSyncDate = UserDefaults.standard.object(forKey: "lastSyncDate") as? Date
         self.stores = []
         loadStores()
+        
+        // Now enforce dependency rules for auto-search settings (after all properties are initialized)
+        let storedAutoOpenSearch = self.autoOpenSearchAfterPhoto
+        let storedAlwaysSearchIgnore = self.alwaysSearchIgnorePrice
+        
+        // Auto-search features require both AI and Internet to be enabled
+        if !self.aiEnabled || !self.internetAccessEnabled {
+            // Force disable auto-search features if AI or Internet is disabled
+            self.autoOpenSearchAfterPhoto = false
+            self.alwaysSearchIgnorePrice = false
+        } else if !storedAutoOpenSearch {
+            // If auto-open search is disabled, also disable always search ignore price
+            self.alwaysSearchIgnorePrice = false
+        }
     }
     
     
@@ -251,10 +298,33 @@ class SettingsService: ObservableObject {
     }
     
     func buildSearchURL(for storeName: String, searchTerm: String) -> String? {
-        guard let store = stores.first(where: { $0.name == storeName }) else {
+        print("🏢 SettingsService.buildSearchURL: Input storeName='\(storeName)', searchTerm='\(searchTerm)'")
+        print("🏢 SettingsService.buildSearchURL: Available stores count = \(stores.count)")
+        for (index, store) in stores.enumerated() {
+            print("🏢 SettingsService.buildSearchURL: Store[\(index)] = '\(store.name)' -> '\(store.url)'")
+        }
+        
+        // Ensure we have a valid store name and term
+        let trimmedStoreName = storeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSearchTerm = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("🏢 SettingsService.buildSearchURL: Trimmed storeName='\(trimmedStoreName)', trimmed searchTerm='\(trimmedSearchTerm)'")
+        
+        guard !trimmedStoreName.isEmpty, !trimmedSearchTerm.isEmpty else {
+            print("❌ SettingsService.buildSearchURL: Empty storeName or searchTerm")
             return nil
         }
-        return store.url.replacingOccurrences(of: "%s", with: searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchTerm)
+        
+        guard let store = stores.first(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedStoreName }) else {
+            print("❌ SettingsService.buildSearchURL: No store found matching '\(trimmedStoreName)'")
+            return nil
+        }
+        
+        print("🏢 SettingsService.buildSearchURL: Found matching store: '\(store.name)' -> '\(store.url)'")
+        let encodedSearchTerm = trimmedSearchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmedSearchTerm
+        print("🏢 SettingsService.buildSearchURL: Encoded search term: '\(encodedSearchTerm)'")
+        let finalURL = store.url.replacingOccurrences(of: "%s", with: encodedSearchTerm)
+        print("🏢 SettingsService.buildSearchURL: Final URL: '\(finalURL)'")
+        return finalURL
     }
     
     func setDefaultStore(_ store: Store) {

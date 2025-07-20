@@ -15,6 +15,8 @@ struct VerifyItemView: View {
     let onRetakePhoto: (() -> Void)?
     let originalImage: UIImage?
     let locationString: String?
+    let selectedStore: Store?
+    let onItemAdded: ((String) -> Void)?
     
     @State private var name: String
     @State private var costString: String
@@ -38,6 +40,7 @@ struct VerifyItemView: View {
     @State private var measurementQuantity = 1.0
     @State private var measurementQuantityString = "1.0"
     @State private var selectedMeasurementUnit = MeasurementUnit.units
+    @State private var shouldAutoOpenSearch = false
     
     
     enum TaxMode: String, CaseIterable {
@@ -56,7 +59,7 @@ struct VerifyItemView: View {
         return baseCost
     }
 
-    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, aiService: AIService, settingsService: SettingsService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil) {
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, aiService: AIService, settingsService: SettingsService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil, selectedStore: Store? = nil, onItemAdded: ((String) -> Void)? = nil, shouldAutoOpenSearch: Bool = false) {
         self.extractedInfo = extractedInfo
         self.store = store
         self.aiService = aiService
@@ -64,12 +67,26 @@ struct VerifyItemView: View {
         self.onRetakePhoto = onRetakePhoto
         self.originalImage = originalImage
         self.locationString = locationString
+        self.selectedStore = selectedStore
+        self.onItemAdded = onItemAdded
         self._name = State(initialValue: extractedInfo.name)
         self._costString = State(initialValue: String(format: "%.2f", extractedInfo.price))
         self._customTaxRateString = State(initialValue: String(format: "%.2f", extractedInfo.taxRate ?? 0.0))
         self._hasUnknownTax = State(initialValue: extractedInfo.taxDescription == "Unknown Taxes" || extractedInfo.taxRate == nil)
         self._taxDescription = State(initialValue: extractedInfo.taxDescription)
         self._dynamicAnalysisIssues = State(initialValue: extractedInfo.analysisIssues ?? [])
+        
+        // Initialize selectedWebsite properly to avoid empty string issues
+        let websiteToUse: String
+        if let selectedStore = selectedStore {
+            websiteToUse = selectedStore.name
+        } else if let defaultStore = settingsService.getDefaultStore() {
+            websiteToUse = defaultStore.name
+        } else {
+            websiteToUse = settingsService.stores.first?.name ?? ""
+        }
+        self._selectedWebsite = State(initialValue: websiteToUse)
+        self._shouldAutoOpenSearch = State(initialValue: shouldAutoOpenSearch)
         
         // Initialize detected tax rate if available from extracted info
         if let extractedTaxRate = extractedInfo.taxRate {
@@ -239,9 +256,12 @@ struct VerifyItemView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Add Item") {
+                        print("📝 VerifyItemView: 'Add Item' button clicked")
                         if shouldDetectTaxRate() {
+                            print("📝 VerifyItemView: Detecting tax rate first")
                             detectTaxRate()
                         } else {
+                            print("📝 VerifyItemView: Adding item directly")
                             addItem()
                         }
                     }
@@ -262,8 +282,6 @@ struct VerifyItemView: View {
                             TextField("Item Name", text: .constant(name))
                                 .disabled(true)
                                 .foregroundColor(.secondary)
-                            
-                            TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
                             
                             Picker("Website", selection: $selectedWebsite) {
                                 ForEach(settingsService.stores, id: \.id) { store in
@@ -328,11 +346,26 @@ struct VerifyItemView: View {
                 measurementQuantity = Double(newValue) ?? 1.0
             }
             .onAppear {
+                print("📝 VerifyItemView: onAppear called - extractedInfo.name='\(extractedInfo.name)', price=\(extractedInfo.price)")
+                print("📝 VerifyItemView: shouldAutoOpenSearch = \(shouldAutoOpenSearch)")
+                print("📝 VerifyItemView: onItemAdded callback = \(onItemAdded != nil ? "present" : "nil")")
+                
                 if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
-                    if let defaultStore = settingsService.getDefaultStore() {
+                    if let selectedStore = selectedStore {
+                        // Use the selected store from CalculatorView
+                        selectedWebsite = selectedStore.name
+                    } else if let defaultStore = settingsService.getDefaultStore() {
                         selectedWebsite = defaultStore.name
                     } else {
                         selectedWebsite = settingsService.stores.first!.name
+                    }
+                }
+                
+                // Auto-open search if requested
+                if shouldAutoOpenSearch {
+                    print("📝 VerifyItemView: Auto-opening search for '\(extractedInfo.name)'")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showingPriceSearchWebView = true
                     }
                 }
             }
@@ -434,13 +467,37 @@ struct VerifyItemView: View {
             measurementUnit: selectedMeasurementUnit.rawValue
         )
         store.addItem(item)
+        
+        // Notify parent about item addition (no auto-search logic should trigger here)
+        print("📝 VerifyItemView: Calling onItemAdded with item.name='\(item.name)'")
+        onItemAdded?(item.name)
+        
+        print("📝 VerifyItemView: Dismissing VerifyItemView")
         presentationMode.wrappedValue.dismiss()
     }
     
     private func setupPriceSearch() {
         priceSearchSpecification = ""
         priceSourceURL = nil
-        showingPriceSearchAlert = true
+        
+        // Ensure selectedWebsite is set before opening search
+        if selectedWebsite.isEmpty {
+            if let selectedStore = selectedStore {
+                selectedWebsite = selectedStore.name
+            } else if let defaultStore = settingsService.getDefaultStore() {
+                selectedWebsite = defaultStore.name
+            } else if let firstStore = settingsService.stores.first {
+                selectedWebsite = firstStore.name
+            }
+        }
+        
+        // If we have a valid website, open search directly
+        if !selectedWebsite.isEmpty {
+            showingPriceSearchWebView = true
+        } else {
+            // Show the prompt to select store if no stores available
+            showingPriceSearchAlert = true
+        }
     }
     
     

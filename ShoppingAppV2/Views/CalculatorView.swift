@@ -8,6 +8,7 @@ struct CalculatorView: View {
     @ObservedObject var settingsService: SettingsService
     @ObservedObject var billingService: BillingService
     @ObservedObject var historyService: HistoryService
+    // Note: onSwitchToSearchTab removed - auto-search now happens within VerifyItemView
     
     private var aiService: AIService {
         AIService(settingsService: settingsService, billingService: billingService, historyService: historyService)
@@ -17,6 +18,7 @@ struct CalculatorView: View {
     @State private var showingAddItem = false
     @State private var showingItemEdit = false
     @State private var showingVerifyItem = false
+    @State private var shouldAutoOpenSearch = false
     @State private var selectedImage: UIImage?
     @State private var editingItem: ShoppingItem?
     @State private var extractedInfo: PriceTagInfo?
@@ -27,6 +29,7 @@ struct CalculatorView: View {
     @State private var showingSettings = false
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var selectedStore: Store?
     
     var body: some View {
         NavigationView {
@@ -78,7 +81,7 @@ struct CalculatorView: View {
                 CameraView(selectedImage: $selectedImage)
             }
             .sheet(isPresented: $showingAddItem) {
-                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsService: settingsService)
+                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsService: settingsService, selectedStore: selectedStore)
             }
             .sheet(item: $editingItem) { item in
                 ItemEditView(
@@ -103,7 +106,13 @@ struct CalculatorView: View {
                             }
                         },
                         originalImage: lastProcessedImage,
-                        locationString: lastLocationString
+                        locationString: lastLocationString,
+                        selectedStore: selectedStore,
+                        onItemAdded: { itemName in
+                            print("📷 CalculatorView: onItemAdded called with itemName='\(itemName)' (no auto-search logic here anymore)")
+                            // Note: Auto-search logic has been moved to trigger immediately after photo processing
+                        },
+                        shouldAutoOpenSearch: shouldAutoOpenSearch
                     )
                 }
             }
@@ -120,30 +129,80 @@ struct CalculatorView: View {
     
     private var locationHeader: some View {
         VStack(spacing: 4) {
-            if settingsService.locationAccessEnabled, let placemark = locationManager.placemark {
-                HStack {
-                    Image(systemName: "location.fill")
-                        .foregroundColor(.blue)
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let city = placemark.locality, let state = placemark.administrativeArea {
-                            Text("\(city), \(state)")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
-                        if let county = placemark.subAdministrativeArea {
-                            Text("\(county) County")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
+            HStack {
+                // Location section
+                if settingsService.locationAccessEnabled, let placemark = locationManager.placemark {
+                    HStack {
+                        Image(systemName: "location.fill")
+                            .foregroundColor(.blue)
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let city = placemark.locality, let state = placemark.administrativeArea {
+                                Text("\(city), \(state)")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            if let county = placemark.subAdministrativeArea {
+                                Text("\(county) County")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
-                    Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(
-                    Color(.systemGray6)
-                        .ignoresSafeArea(edges: .top)
-                )
+                
+                Spacer()
+                
+                // Store selection
+                Menu {
+                    Button(action: {
+                        selectedStore = nil
+                    }) {
+                        HStack {
+                            Text("None")
+                            Spacer()
+                            if selectedStore == nil {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    
+                    ForEach(settingsService.stores, id: \.id) { store in
+                        Button(action: {
+                            selectedStore = store
+                        }) {
+                            HStack {
+                                Text(store.name)
+                                Spacer()
+                                if selectedStore?.id == store.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "storefront.fill")
+                            .foregroundColor(.purple)
+                        Text(selectedStore?.name ?? "None")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(
+                Color(.systemGray6)
+                    .ignoresSafeArea(edges: .top)
+            )
+        }
+        .onAppear {
+            // Auto-select default store if not already selected
+            if selectedStore == nil {
+                selectedStore = settingsService.getDefaultStore()
             }
         }
     }
@@ -386,10 +445,49 @@ struct CalculatorView: View {
                 let priceTagInfo = try await aiService.analyzePriceTag(image: image, location: locationString)
                 
                 DispatchQueue.main.async {
+                    print("📷 CalculatorView: Photo processed successfully - showing VerifyItemView")
+                    print("📷 CalculatorView: Extracted info - name='\(priceTagInfo.name)', price=\(priceTagInfo.price)")
                     self.extractedInfo = priceTagInfo
                     self.isProcessingImage = false
                     self.selectedImage = nil
-                    self.showingVerifyItem = true
+                    
+                    // Auto-search functionality - check immediately after photo processing
+                    print("📷 CalculatorView: Checking auto-search settings:")
+                    print("  - autoOpenSearchAfterPhoto: \(self.settingsService.autoOpenSearchAfterPhoto)")
+                    print("  - aiEnabled: \(self.settingsService.aiEnabled)")
+                    print("  - internetAccessEnabled: \(self.settingsService.internetAccessEnabled)")
+                    
+                    let shouldAutoSearch = self.settingsService.autoOpenSearchAfterPhoto && 
+                                          self.settingsService.aiEnabled && 
+                                          self.settingsService.internetAccessEnabled
+                    
+                    if shouldAutoSearch {
+                        let priceWasCaptured = priceTagInfo.price > 0
+                        let shouldSearch = self.settingsService.alwaysSearchIgnorePrice || !priceWasCaptured
+                        print("📷 CalculatorView: Auto-search evaluation:")
+                        print("  - shouldAutoSearch=\(shouldAutoSearch)")
+                        print("  - priceWasCaptured=\(priceWasCaptured) (price=\(priceTagInfo.price))")
+                        print("  - alwaysSearchIgnorePrice=\(self.settingsService.alwaysSearchIgnorePrice)")
+                        print("  - shouldSearch=\(shouldSearch)")
+                        
+                        if shouldSearch {
+                            print("📷 ✅ CalculatorView: Auto-search enabled - will show VerifyItemView with auto-search")
+                            // Show VerifyItemView with auto-search flag
+                            self.shouldAutoOpenSearch = true
+                            self.showingVerifyItem = true
+                        } else {
+                            print("📷 ❌ CalculatorView: Not triggering auto-search - price was captured (\(priceTagInfo.price)) and 'Always search (ignore captured price)' is disabled")
+                            print("💡 To enable auto-search even when price is captured, go to Settings > AI Settings > 'Always search (ignore captured price)'")
+                            // Show VerifyItemView without auto-search
+                            self.shouldAutoOpenSearch = false
+                            self.showingVerifyItem = true
+                        }
+                    } else {
+                        print("📷 CalculatorView: Auto-search disabled due to settings - showing VerifyItemView")
+                        // Show VerifyItemView since auto-search is disabled
+                        self.shouldAutoOpenSearch = false
+                        self.showingVerifyItem = true
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {

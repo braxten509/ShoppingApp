@@ -36,6 +36,15 @@ struct AISettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             
+            Section("Auto-Search Settings") {
+                Toggle("Auto-open search after photo", isOn: $settingsService.autoOpenSearchAfterPhoto)
+                    .disabled(!settingsService.aiEnabled || !settingsService.internetAccessEnabled)
+                    .foregroundColor((!settingsService.aiEnabled || !settingsService.internetAccessEnabled) ? .secondary : .primary)
+                
+                Toggle("Always search (ignore captured price)", isOn: $settingsService.alwaysSearchIgnorePrice)
+                    .disabled(!settingsService.aiEnabled || !settingsService.internetAccessEnabled || !settingsService.autoOpenSearchAfterPhoto)
+                    .foregroundColor((!settingsService.aiEnabled || !settingsService.internetAccessEnabled || !settingsService.autoOpenSearchAfterPhoto) ? .secondary : .primary)
+            }
             
             Section("AI Interactions") {
                 NavigationLink(destination: PromptsHistoryView(historyService: historyService)) {
@@ -67,6 +76,7 @@ struct AISettingsView: View {
         } message: {
             Text("Reset all AI models to sonar-pro?")
         }
+        // Note: Auto-search dependency logic is now handled directly in SettingsService property setters
     }
 }
 

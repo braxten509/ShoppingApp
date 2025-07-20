@@ -10,6 +10,7 @@ struct AddItemView: View {
     // Optional prefill parameters
     let prefillName: String?
     let prefillPrice: Double?
+    let selectedStore: Store?
     
     @State private var name: String
     @State private var costString: String
@@ -33,7 +34,7 @@ struct AddItemView: View {
     @State private var selectedMeasurementUnit = MeasurementUnit.units
     
     // Initializer to support prefilled data
-    init(store: ShoppingListStore, locationManager: LocationManager, aiService: AIService, settingsService: SettingsService, prefillName: String? = nil, prefillPrice: Double? = nil) {
+    init(store: ShoppingListStore, locationManager: LocationManager, aiService: AIService, settingsService: SettingsService, prefillName: String? = nil, prefillPrice: Double? = nil, selectedStore: Store? = nil) {
         print("🏗️ AddItemView init called with prefillName: '\(prefillName ?? "nil")', prefillPrice: \(prefillPrice?.description ?? "nil")")
         self.store = store
         self.locationManager = locationManager
@@ -41,12 +42,24 @@ struct AddItemView: View {
         self.settingsService = settingsService
         self.prefillName = prefillName
         self.prefillPrice = prefillPrice
+        self.selectedStore = selectedStore
         
         // Initialize @State variables with prefill values
         self._name = State(initialValue: prefillName ?? "")
         self._costString = State(initialValue: prefillPrice != nil ? String(format: "%.2f", prefillPrice!) : "")
         
-        print("🏗️ Initialized name: '\(prefillName ?? "")', costString: '\(prefillPrice != nil ? String(format: "%.2f", prefillPrice!) : "")'")
+        // Initialize selectedWebsite properly to avoid empty string issues
+        let websiteToUse: String
+        if let selectedStore = selectedStore {
+            websiteToUse = selectedStore.name
+        } else if let defaultStore = settingsService.getDefaultStore() {
+            websiteToUse = defaultStore.name
+        } else {
+            websiteToUse = settingsService.stores.first?.name ?? ""
+        }
+        self._selectedWebsite = State(initialValue: websiteToUse)
+        
+        print("🏗️ Initialized name: '\(prefillName ?? "")', costString: '\(prefillPrice != nil ? String(format: "%.2f", prefillPrice!) : "")', selectedWebsite: '\(websiteToUse)'")
     }
     
     enum TaxMode: String, CaseIterable {
@@ -320,8 +333,6 @@ struct AddItemView: View {
                         .disabled(true)
                         .foregroundColor(.secondary)
                     
-                    TextField("Size/Weight/Count (e.g., 12 oz, 6-pack)", text: $priceSearchSpecification)
-                    
                     Picker("Website", selection: $selectedWebsite) {
                         ForEach(settingsService.stores, id: \.id) { store in
                             Text(store.name).tag(store.name)
@@ -382,7 +393,10 @@ struct AddItemView: View {
         print("📋 Current costString: '\(costString)'")
         
         if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
-            if let defaultStore = settingsService.getDefaultStore() {
+            if let selectedStore = selectedStore {
+                // Use the selected store from CalculatorView
+                selectedWebsite = selectedStore.name
+            } else if let defaultStore = settingsService.getDefaultStore() {
                 selectedWebsite = defaultStore.name
             } else {
                 selectedWebsite = settingsService.stores.first!.name
@@ -519,7 +533,15 @@ struct AddItemView: View {
     private func setupPriceSearch() {
         priceSearchSpecification = ""
         priceSourceURL = nil
-        showingPriceSearchAlert = true
+        
+        if let selectedStore = selectedStore {
+            // If store is selected, skip the prompt and directly open search
+            selectedWebsite = selectedStore.name
+            showingPriceSearchWebView = true
+        } else {
+            // Show the prompt to select store
+            showingPriceSearchAlert = true
+        }
     }
     
     

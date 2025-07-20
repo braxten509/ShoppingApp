@@ -8,13 +8,15 @@ struct MainTabView: View {
     @StateObject private var settingsService = SettingsService()
     @StateObject private var billingService = BillingService()
     @StateObject private var historyService = HistoryService()
+    @State private var selectedTab: Int = 0
+    @State private var searchItemName: String = ""
     
     private var aiService: AIService {
         AIService(settingsService: settingsService, billingService: billingService, historyService: historyService)
     }
     
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             CalculatorView(
                 store: store,
                 historyStore: historyStore,
@@ -28,12 +30,14 @@ struct MainTabView: View {
                 Image(systemName: "cart")
                 Text("Shop")
             }
+            .tag(0)
             
             SearchTabView(
                 store: store,
                 locationManager: locationManager,
                 settingsService: settingsService,
-                aiService: aiService
+                aiService: aiService,
+                prefillItemName: searchItemName
             )
             .tabItem {
                 Image(systemName: "magnifyingglass")
@@ -42,12 +46,22 @@ struct MainTabView: View {
                     .foregroundColor(settingsService.internetAccessEnabled ? .primary : .secondary)
             }
             .disabled(!settingsService.internetAccessEnabled)
+            .tag(1)
             
             ShoppingHistoryView(historyStore: historyStore, shoppingListStore: store)
                 .tabItem {
                     Image(systemName: "clock")
                     Text("History")
                 }
+                .tag(2)
+        }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            print("🔄 MainTabView: selectedTab changed from \(oldValue) to \(newValue), searchItemName='\(searchItemName)'")
+            // Clear search item name when switching away from search tab
+            if newValue != 1 {
+                print("🔄 MainTabView: Clearing searchItemName because switching away from search tab")
+                searchItemName = ""
+            }
         }
     }
 }

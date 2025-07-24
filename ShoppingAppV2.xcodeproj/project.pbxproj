@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F0B24BA12E31F84C00A38434 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F0B24BA02E31F84600A38434 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		F06C672E2E01372700BE9529 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		F06C67202E01372500BE9529 /* ShoppingAppV2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShoppingAppV2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F06C672D2E01372700BE9529 /* ShoppingAppV2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShoppingAppV2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F06C67372E01372700BE9529 /* ShoppingAppV2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShoppingAppV2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0B24BA02E31F84600A38434 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +80,7 @@
 		F06C67172E01372500BE9529 = {
 			isa = PBXGroup;
 			children = (
+				F0B24BA02E31F84600A38434 /* README.md */,
 				F06C67222E01372500BE9529 /* ShoppingAppV2 */,
 				F06C67302E01372700BE9529 /* ShoppingAppV2Tests */,
 				F06C673A2E01372700BE9529 /* ShoppingAppV2UITests */,
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F0B24BA12E31F84C00A38434 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

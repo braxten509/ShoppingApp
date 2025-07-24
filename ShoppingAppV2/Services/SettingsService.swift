@@ -124,6 +124,12 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var customPriceListsEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(customPriceListsEnabled, forKey: "customPriceListsEnabled")
+        }
+    }
+    
     // Credit tracking
     @Published var openAICredits: Double {
         didSet {
@@ -196,6 +202,13 @@ class SettingsService: ObservableObject {
         self.openAICredits = UserDefaults.standard.object(forKey: "openAICredits") as? Double ?? -1.0
         self.perplexityCredits = UserDefaults.standard.object(forKey: "perplexityCredits") as? Double ?? -1.0
         self.lastSyncDate = UserDefaults.standard.object(forKey: "lastSyncDate") as? Date
+        
+        // Initialize custom price lists setting
+        if UserDefaults.standard.object(forKey: "customPriceListsEnabled") == nil {
+            UserDefaults.standard.set(true, forKey: "customPriceListsEnabled")
+        }
+        self.customPriceListsEnabled = UserDefaults.standard.bool(forKey: "customPriceListsEnabled")
+        
         self.stores = []
         loadStores()
         

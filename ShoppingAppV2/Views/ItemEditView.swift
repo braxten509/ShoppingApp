@@ -5,6 +5,7 @@ struct ItemEditView: View {
     @ObservedObject var aiService: AIService
     @ObservedObject var locationManager: LocationManager
     @ObservedObject var settingsService: SettingsService
+    @ObservedObject var customPriceListStore: CustomPriceListStore
     @Environment(\.presentationMode) var presentationMode
     
     @State private var name: String
@@ -27,12 +28,14 @@ struct ItemEditView: View {
     @State private var measurementQuantity: Double
     @State private var measurementQuantityString: String
     @State private var selectedMeasurementUnit: MeasurementUnit
+    @State private var showingCustomPriceSearch = false
     
-    init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager, settingsService: SettingsService) {
+    init(item: Binding<ShoppingItem>, aiService: AIService, locationManager: LocationManager, settingsService: SettingsService, customPriceListStore: CustomPriceListStore) {
         self._item = item
         self.aiService = aiService
         self.locationManager = locationManager
         self.settingsService = settingsService
+        self.customPriceListStore = customPriceListStore
         self._name = State(initialValue: item.wrappedValue.name)
         self._costString = State(initialValue: String(format: "%.2f", item.wrappedValue.cost))
         self._quantityString = State(initialValue: String(item.wrappedValue.quantity))
@@ -59,21 +62,54 @@ struct ItemEditView: View {
                 Section(header: Text("Item Details")) {
                     TextField("Item Name", text: $name)
                     
-                    HStack {
-                        Text("$")
-                        TextField("0.00", text: $costString)
-                            .keyboardType(.decimalPad)
-                        Text("per item")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Button(action: {
-                            setupPriceSearch()
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(name.isEmpty ? .gray : .purple)
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("$")
+                            TextField("0.00", text: $costString)
+                                .keyboardType(.decimalPad)
+                            Text("per item")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .disabled(name.isEmpty)
+                        
+                        HStack(spacing: 20) {
+                            // Web search button
+                            Button(action: {
+                                setupPriceSearch()
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                    Text("Search Price")
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(name.isEmpty ? .gray : .white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(name.isEmpty ? Color.gray.opacity(0.3) : Color.purple)
+                                .cornerRadius(8)
+                            }
+                            .disabled(name.isEmpty)
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Custom price search button
+                            Button(action: {
+                                showingCustomPriceSearch = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "list.bullet.rectangle")
+                                    Text("Search Price List")
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(name.isEmpty || !customPriceListStore.hasLists ? .gray : .white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(name.isEmpty || !customPriceListStore.hasLists ? Color.gray.opacity(0.3) : Color.orange)
+                                .cornerRadius(8)
+                            }
+                            .disabled(name.isEmpty || !customPriceListStore.hasLists)
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     
                     HStack {
@@ -265,6 +301,15 @@ struct ItemEditView: View {
                     selectedItemName: $webViewSelectedItemName,
                     settingsService: settingsService
                 )
+            }
+            .sheet(isPresented: $showingCustomPriceSearch) {
+                CustomPriceSearchView(customPriceListStore: customPriceListStore) { item, list in
+                    costString = String(format: "%.2f", item.price)
+                    if name.isEmpty {
+                        name = item.name
+                    }
+                    showingCustomPriceSearch = false
+                }
             }
             .onChange(of: webViewSelectedPrice) { price in
                 if let price = price {

@@ -377,6 +377,78 @@ class ShoppingListStore: ObservableObject {
     }
 }
 
+struct CustomPriceItem: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var price: Double
+    var description: String?
+    let dateAdded: Date
+    var lastModified: Date
+    
+    init(name: String, price: Double, description: String? = nil) {
+        self.id = UUID()
+        self.name = name
+        self.price = price
+        self.description = description
+        self.dateAdded = Date()
+        self.lastModified = Date()
+    }
+    
+    mutating func updateItem(name: String, price: Double, description: String? = nil) {
+        self.name = name
+        self.price = price
+        self.description = description
+        self.lastModified = Date()
+    }
+}
+
+struct CustomPriceList: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var items: [CustomPriceItem]
+    let dateCreated: Date
+    var lastModified: Date
+    
+    init(name: String) {
+        self.id = UUID()
+        self.name = name
+        self.items = []
+        self.dateCreated = Date()
+        self.lastModified = Date()
+    }
+    
+    mutating func addItem(_ item: CustomPriceItem) {
+        items.append(item)
+        lastModified = Date()
+    }
+    
+    mutating func removeItem(at index: Int) {
+        guard index < items.count else { return }
+        items.remove(at: index)
+        lastModified = Date()
+    }
+    
+    mutating func updateItem(at index: Int, with item: CustomPriceItem) {
+        guard index < items.count else { return }
+        items[index] = item
+        lastModified = Date()
+    }
+    
+    mutating func updateName(_ newName: String) {
+        self.name = newName
+        self.lastModified = Date()
+    }
+    
+    func searchItems(query: String) -> [CustomPriceItem] {
+        guard !query.isEmpty else { return items }
+        let lowercaseQuery = query.lowercased()
+        return items.filter { item in
+            item.name.lowercased().contains(lowercaseQuery) ||
+            (item.description?.lowercased().contains(lowercaseQuery) ?? false)
+        }
+    }
+}
+
 class ShoppingHistoryStore: ObservableObject {
     @Published var completedTrips: [CompletedShoppingTrip] = [] {
         didSet {

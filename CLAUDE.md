@@ -10,11 +10,12 @@ ShoppingAppV2 is an iOS SwiftUI application that helps users calculate shopping 
 
 ### Main Components
 
-- **CalculatorView**: Primary UI coordinator that manages the shopping experience
+- **MainTabView**: Primary UI coordinator that manages dependency injection and tab navigation
+- **CalculatorView**: Shopping cart and calculation interface
 - **AIService**: Centralized AI service coordinator that routes requests to appropriate providers  
 - **ShoppingListStore**: Core data store for shopping items with automatic persistence
 - **LocationManager**: Handles location detection for tax rate calculations
-- **Models.swift**: Contains all data models including ShoppingItem and PriceTagInfo
+- **Models/Models.swift**: Contains all data models including ShoppingItem and PriceTagInfo
 - **Migration/**: Data and file migration utilities for backwards compatibility
 
 ### AI Integration
@@ -55,11 +56,11 @@ AI provider selection is configurable per task type through SettingsService:
 
 ### Building and Testing
 ```bash
-# Build the project
-xcodebuild -project ShoppingAppV2.xcodeproj -scheme ShoppingAppV2 -destination 'platform=iOS Simulator,name=iPhone 15' build
+# Build the project - USE IPHONE 16 FOR THE SIMULATOR!
+xcodebuild -project ShoppingAppV2.xcodeproj -scheme ShoppingAppV2 -destination 'platform=iOS Simulator,name=iPhone 16' build
 
-# Run tests
-xcodebuild -project ShoppingAppV2.xcodeproj -scheme ShoppingAppV2 -destination 'platform=iOS Simulator,name=iPhone 15' test
+# Run tests  
+xcodebuild -project ShoppingAppV2.xcodeproj -scheme ShoppingAppV2 -destination 'platform=iOS Simulator,name=iPhone 16' test
 
 # Clean build folder
 xcodebuild -project ShoppingAppV2.xcodeproj -scheme ShoppingAppV2 clean
@@ -75,39 +76,47 @@ The app requires API keys to be configured in the settings:
 
 ### Core Files
 - `ShoppingAppV2App.swift`: App entry point
-- `ContentView.swift`: Main UI controller
-- `Models.swift`: All data models and business logic
-- `AIService.swift`: AI provider coordination
-- `OpenAIService.swift`: Legacy OpenAI integration (contains billing logic)
+- `MainTabView.swift`: Main UI controller and dependency injection
+- `Models/Models.swift`: All data models and business logic
+- `Services/AIService.swift`: AI provider coordination
+- `Services/OpenAIService.swift`: Legacy OpenAI integration (contains billing logic)
 
 ### UI Components
-- `AddItemView.swift`: Manual item addition
-- `ItemEditView.swift`: Item editing interface
-- `VerifyItemView.swift`: Price tag verification
-- `SettingsView.swift`: App configuration
-- `BillingView.swift`: Cost tracking interface
-- `PromptsHistoryView.swift`: AI interaction history
-- `AISettingsView.swift`: AI model selection and configuration
-- `APIKeysView.swift`: API key management interface
-- `CameraView.swift`: Camera integration for price tag scanning
-- `CalculatorView.swift`: Shopping cost calculation interface
-- `MainTabView.swift`: Primary tab navigation controller
-- `PriceSearchWebView.swift`: Web-based price search interface
-- `SearchTabView.swift`: Product search and price comparison
-- `ShoppingHistoryView.swift`: Historical shopping data
-- `StoreManagementView.swift`: Custom store configuration
+- `Views/AddItemView.swift`: Manual item addition
+- `Views/ItemEditView.swift`: Item editing interface
+- `Views/VerifyItemView.swift`: Price tag verification
+- `Views/SettingsView.swift`: App configuration
+- `Views/BillingView.swift`: Cost tracking interface
+- `Views/PromptsHistoryView.swift`: AI interaction history
+- `Views/AISettingsView.swift`: AI model selection and configuration
+- `Views/APIKeysView.swift`: API key management interface
+- `Views/CameraView.swift`: Camera integration for price tag scanning
+- `Views/CalculatorView.swift`: Shopping cost calculation interface
+- `Views/MainTabView.swift`: Primary tab navigation controller
+- `Views/PriceSearchWebView.swift`: Web-based price search interface
+- `Views/SearchTabView.swift`: Product search and price comparison
+- `Views/ShoppingHistoryView.swift`: Historical shopping data
+- `Views/StoreManagementView.swift`: Custom store configuration
+- `Views/CustomPriceListsView.swift`: Custom price list management
+- `Views/CustomPriceSearchView.swift`: Custom price search interface
+- `Views/KeyboardToolbar.swift`: Keyboard accessory view
+- `Views/ManualPriceEntryOverlay.swift`: Manual price input overlay
+- `Views/PrivacyView.swift`: Privacy policy and settings
+- `Views/SecureWebView.swift`: Secure web view component
 
 ### Services
-- `BillingService.swift`: Cost tracking and credit management
-- `HistoryService.swift`: Prompt history management
-- `SettingsService.swift`: User preferences and API key storage
-- `OpenAIService.swift`: Legacy OpenAI integration with billing
+- `Services/BillingService.swift`: Cost tracking and credit management
+- `Services/HistoryService.swift`: Prompt history management
+- `Services/SettingsService.swift`: User preferences and API key storage
+- `Services/OpenAIService.swift`: Legacy OpenAI integration with billing
+- `Services/CustomPriceListStore.swift`: Custom price list data management
+- `Services/PricingService.swift`: Pricing calculations and validation
 
 ### Supporting Files
 - `AIProviderProtocol.swift`: Protocol definition for AI service providers
 - `ShareSheet.swift`: iOS sharing functionality
-- `Migration/DataMigration.swift`: User data migration utilities
 - `Migration/FileMigration.swift`: File system migration utilities
+- `Models/AIModels.swift`: AI model definitions and enums
 
 ## Important Implementation Details
 
@@ -157,7 +166,7 @@ The app includes unit tests in `ShoppingAppV2Tests/` and UI tests in `ShoppingAp
 ## Key Development Patterns
 
 ### Data Flow
-1. **User Input** → Camera/Manual entry → `ContentView`
+1. **User Input** → Camera/Manual entry → `MainTabView` → `CalculatorView`
 2. **AI Processing** → `AIService` routes to appropriate provider (OpenAI/Perplexity/Gemini)
 3. **Data Storage** → `ShoppingListStore` with automatic UserDefaults persistence
 4. **Cost Tracking** → All AI interactions logged via `BillingService` and `HistoryService`

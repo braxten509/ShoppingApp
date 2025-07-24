@@ -8,6 +8,7 @@ struct MainTabView: View {
     @StateObject private var settingsService = SettingsService()
     @StateObject private var billingService = BillingService()
     @StateObject private var historyService = HistoryService()
+    @StateObject private var customPriceListStore = CustomPriceListStore()
     @State private var selectedTab: Int = 0
     @State private var searchItemName: String = ""
     
@@ -24,7 +25,8 @@ struct MainTabView: View {
                 openAIService: openAIService,
                 settingsService: settingsService,
                 billingService: billingService,
-                historyService: historyService
+                historyService: historyService,
+                customPriceListStore: customPriceListStore
             )
             .tabItem {
                 Image(systemName: "cart")
@@ -37,6 +39,7 @@ struct MainTabView: View {
                 locationManager: locationManager,
                 settingsService: settingsService,
                 aiService: aiService,
+                customPriceListStore: customPriceListStore,
                 prefillItemName: searchItemName
             )
             .tabItem {

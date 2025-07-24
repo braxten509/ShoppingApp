@@ -8,6 +8,7 @@ struct CalculatorView: View {
     @ObservedObject var settingsService: SettingsService
     @ObservedObject var billingService: BillingService
     @ObservedObject var historyService: HistoryService
+    @ObservedObject var customPriceListStore: CustomPriceListStore
     // Note: onSwitchToSearchTab removed - auto-search now happens within VerifyItemView
     
     private var aiService: AIService {
@@ -30,9 +31,11 @@ struct CalculatorView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var selectedStore: Store?
+    @State private var selectedCustomPriceList: CustomPriceList?
     
     var body: some View {
-        NavigationView {
+        let _ = print("🔄 CalculatorView.body computed - Store: \(selectedStore?.name ?? "nil"), CustomList: \(selectedCustomPriceList?.name ?? "nil")")
+        return NavigationView {
             VStack(spacing: 16) {
                 // Location Header
                 locationHeader
@@ -81,14 +84,15 @@ struct CalculatorView: View {
                 CameraView(selectedImage: $selectedImage)
             }
             .sheet(isPresented: $showingAddItem) {
-                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsService: settingsService, selectedStore: selectedStore)
+                AddItemView(store: store, locationManager: locationManager, aiService: aiService, settingsService: settingsService, customPriceListStore: customPriceListStore, selectedStore: selectedStore)
             }
             .sheet(item: $editingItem) { item in
                 ItemEditView(
                     item: bindingForItem(item),
                     aiService: aiService,
                     locationManager: locationManager,
-                    settingsService: settingsService
+                    settingsService: settingsService,
+                    customPriceListStore: customPriceListStore
                 )
             }
             .sheet(isPresented: $showingVerifyItem) {
@@ -98,6 +102,7 @@ struct CalculatorView: View {
                         store: store,
                         aiService: aiService,
                         settingsService: settingsService,
+                        customPriceListStore: customPriceListStore,
                         onRetakePhoto: {
                             // Retake photo callback
                             showingVerifyItem = false
@@ -117,7 +122,7 @@ struct CalculatorView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(openAIService: openAIService, settingsService: settingsService, store: store, historyService: historyService)
+                SettingsView(openAIService: openAIService, settingsService: settingsService, store: store, historyService: historyService, customPriceListStore: customPriceListStore)
             }
             .onChange(of: selectedImage) { _, image in
                 if let image = image {
@@ -152,9 +157,55 @@ struct CalculatorView: View {
                 
                 Spacer()
                 
+                // Custom Price List Selection
+                if customPriceListStore.hasLists {
+                    Menu {
+                        Button(action: {
+                            print("🔘 Custom Price List Menu: Selecting 'None'")
+                            selectedCustomPriceList = nil
+                        }) {
+                            HStack {
+                                Text("None")
+                                Spacer()
+                                if selectedCustomPriceList == nil {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        
+                        ForEach(customPriceListStore.customPriceLists, id: \.id) { list in
+                            Button(action: {
+                                print("🔘 Custom Price List Menu: Selecting '\(list.name)'")
+                                selectedCustomPriceList = list
+                            }) {
+                                HStack {
+                                    Text(list.name)
+                                    Spacer()
+                                    if selectedCustomPriceList?.id == list.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        let _ = print("🔘 CustomPriceList Menu Label - Current: \(selectedCustomPriceList?.name ?? "None")")
+                        HStack {
+                            Image(systemName: "list.bullet.rectangle")
+                                .foregroundColor(.orange)
+                            Text(selectedCustomPriceList?.name ?? "None")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
                 // Store selection
                 Menu {
                     Button(action: {
+                        print("🏪 Store Menu: Selecting 'None'")
                         selectedStore = nil
                     }) {
                         HStack {
@@ -168,6 +219,7 @@ struct CalculatorView: View {
                     
                     ForEach(settingsService.stores, id: \.id) { store in
                         Button(action: {
+                            print("🏪 Store Menu: Selecting '\(store.name)'")
                             selectedStore = store
                         }) {
                             HStack {
@@ -180,6 +232,7 @@ struct CalculatorView: View {
                         }
                     }
                 } label: {
+                    let _ = print("🏪 Store Menu Label - Current: \(selectedStore?.name ?? "None")")
                     HStack {
                         Image(systemName: "storefront.fill")
                             .foregroundColor(.purple)
@@ -200,9 +253,20 @@ struct CalculatorView: View {
             )
         }
         .onAppear {
-            // Auto-select default store if not already selected
+            print("🔄 CalculatorView.onAppear - Store: \(selectedStore?.name ?? "nil"), CustomList: \(selectedCustomPriceList?.name ?? "nil")")
+            
+            // Auto-select default store if not already selected (only once)
             if selectedStore == nil {
-                selectedStore = settingsService.getDefaultStore()
+                let defaultStore = settingsService.getDefaultStore()
+                print("🔄 Setting selectedStore to: \(defaultStore?.name ?? "nil")")
+                selectedStore = defaultStore
+            }
+            
+            // Auto-select default custom price list if not already selected (only once)  
+            if selectedCustomPriceList == nil {
+                let defaultList = customPriceListStore.getDefaultList()
+                print("🔄 Setting selectedCustomPriceList to: \(defaultList?.name ?? "nil")")
+                selectedCustomPriceList = defaultList
             }
         }
     }
@@ -510,6 +574,7 @@ struct CalculatorView: View {
         openAIService: OpenAIService(),
         settingsService: SettingsService(),
         billingService: BillingService(),
-        historyService: HistoryService()
+        historyService: HistoryService(),
+        customPriceListStore: CustomPriceListStore()
     )
 }

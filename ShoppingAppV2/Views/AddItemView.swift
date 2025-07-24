@@ -5,6 +5,7 @@ struct AddItemView: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject var aiService: AIService
     @ObservedObject var settingsService: SettingsService
+    @ObservedObject var customPriceListStore: CustomPriceListStore
     @Environment(\.presentationMode) var presentationMode
     
     // Optional prefill parameters
@@ -32,14 +33,16 @@ struct AddItemView: View {
     @State private var measurementQuantity = 1.0
     @State private var measurementQuantityString = "1.0"
     @State private var selectedMeasurementUnit = MeasurementUnit.units
+    @State private var showingCustomPriceSearch = false
     
     // Initializer to support prefilled data
-    init(store: ShoppingListStore, locationManager: LocationManager, aiService: AIService, settingsService: SettingsService, prefillName: String? = nil, prefillPrice: Double? = nil, selectedStore: Store? = nil) {
+    init(store: ShoppingListStore, locationManager: LocationManager, aiService: AIService, settingsService: SettingsService, customPriceListStore: CustomPriceListStore, prefillName: String? = nil, prefillPrice: Double? = nil, selectedStore: Store? = nil) {
         print("🏗️ AddItemView init called with prefillName: '\(prefillName ?? "nil")', prefillPrice: \(prefillPrice?.description ?? "nil")")
         self.store = store
         self.locationManager = locationManager
         self.aiService = aiService
         self.settingsService = settingsService
+        self.customPriceListStore = customPriceListStore
         self.prefillName = prefillName
         self.prefillPrice = prefillPrice
         self.selectedStore = selectedStore
@@ -100,6 +103,15 @@ struct AddItemView: View {
                 .fullScreenCover(isPresented: $showingPriceSearchWebView) {
                     priceSearchWebView
                 }
+                .sheet(isPresented: $showingCustomPriceSearch) {
+                    CustomPriceSearchView(customPriceListStore: customPriceListStore) { item, list in
+                        costString = String(format: "%.2f", item.price)
+                        if name.isEmpty {
+                            name = item.name
+                        }
+                        showingCustomPriceSearch = false
+                    }
+                }
                 .onChange(of: webViewSelectedPrice) { _, price in
                     handlePriceSelection(price)
                 }
@@ -147,18 +159,51 @@ struct AddItemView: View {
     
     @ViewBuilder
     private var priceInputRow: some View {
-        HStack {
-            Text("$")
-            TextField("0.00", text: $costString)
-                .keyboardType(.decimalPad)
-            
-            Button(action: {
-                setupPriceSearch()
-            }) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor((name.isEmpty || !settingsService.internetAccessEnabled) ? .gray : .purple)
+        VStack(spacing: 8) {
+            HStack {
+                Text("$")
+                TextField("0.00", text: $costString)
+                    .keyboardType(.decimalPad)
             }
-            .disabled(name.isEmpty || !settingsService.internetAccessEnabled)
+            
+            HStack(spacing: 20) {
+                // Web search button
+                Button(action: {
+                    setupPriceSearch()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                        Text("Search Price")
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor((name.isEmpty || !settingsService.internetAccessEnabled) ? .gray : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background((name.isEmpty || !settingsService.internetAccessEnabled) ? Color.gray.opacity(0.3) : Color.purple)
+                    .cornerRadius(8)
+                }
+                .disabled(name.isEmpty || !settingsService.internetAccessEnabled)
+                .buttonStyle(PlainButtonStyle())
+                
+                // Custom price search button
+                Button(action: {
+                    showingCustomPriceSearch = true
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "list.bullet.rectangle")
+                        Text("Search Price List")
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(name.isEmpty || !customPriceListStore.hasLists ? .gray : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(name.isEmpty || !customPriceListStore.hasLists ? Color.gray.opacity(0.3) : Color.orange)
+                    .cornerRadius(8)
+                }
+                .disabled(name.isEmpty || !customPriceListStore.hasLists)
+                .buttonStyle(PlainButtonStyle())
+            }
+            .buttonStyle(PlainButtonStyle())
         }
     }
     

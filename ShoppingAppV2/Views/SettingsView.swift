@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var settingsService: SettingsService
     @ObservedObject var store: ShoppingListStore
     @ObservedObject var historyService: HistoryService
+    @ObservedObject var customPriceListStore: CustomPriceListStore
     @Environment(\.presentationMode) var presentationMode
     @State private var showingPromptsHistory = false
     @State private var apiKeyInput: String = ""
@@ -74,6 +75,25 @@ struct SettingsView: View {
                                     .font(.headline)
                                     .foregroundColor(.primary)
                                 Text("Configure stores for price search")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            
+                            Spacer()
+                        }
+                    }
+                    
+                    NavigationLink(destination: CustomPriceListsView(customPriceListStore: customPriceListStore, settingsService: settingsService)) {
+                        HStack {
+                            Image(systemName: "list.bullet.rectangle")
+                                .foregroundColor(.purple)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Custom Price Lists")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("Create and manage custom stores")
                                     .foregroundColor(.secondary)
                                     .font(.caption)
                             }
@@ -292,6 +312,7 @@ struct SettingsView: View {
         openAIService: OpenAIService(),
         settingsService: SettingsService(),
         store: ShoppingListStore(),
-        historyService: HistoryService()
+        historyService: HistoryService(),
+        customPriceListStore: CustomPriceListStore()
     )
 }

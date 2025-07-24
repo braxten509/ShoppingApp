@@ -11,6 +11,7 @@ struct VerifyItemView: View {
     @ObservedObject var store: ShoppingListStore
     @ObservedObject var aiService: AIService
     @ObservedObject var settingsService: SettingsService
+    @ObservedObject var customPriceListStore: CustomPriceListStore
     @Environment(\.presentationMode) var presentationMode
     let onRetakePhoto: (() -> Void)?
     let originalImage: UIImage?
@@ -41,6 +42,7 @@ struct VerifyItemView: View {
     @State private var measurementQuantityString = "1.0"
     @State private var selectedMeasurementUnit = MeasurementUnit.units
     @State private var shouldAutoOpenSearch = false
+    @State private var showingCustomPriceSearch = false
     
     
     enum TaxMode: String, CaseIterable {
@@ -59,11 +61,12 @@ struct VerifyItemView: View {
         return baseCost
     }
 
-    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, aiService: AIService, settingsService: SettingsService, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil, selectedStore: Store? = nil, onItemAdded: ((String) -> Void)? = nil, shouldAutoOpenSearch: Bool = false) {
+    init(extractedInfo: PriceTagInfo, store: ShoppingListStore, aiService: AIService, settingsService: SettingsService, customPriceListStore: CustomPriceListStore, onRetakePhoto: (() -> Void)? = nil, originalImage: UIImage? = nil, locationString: String? = nil, selectedStore: Store? = nil, onItemAdded: ((String) -> Void)? = nil, shouldAutoOpenSearch: Bool = false) {
         self.extractedInfo = extractedInfo
         self.store = store
         self.aiService = aiService
         self.settingsService = settingsService
+        self.customPriceListStore = customPriceListStore
         self.onRetakePhoto = onRetakePhoto
         self.originalImage = originalImage
         self.locationString = locationString
@@ -100,18 +103,51 @@ struct VerifyItemView: View {
                 Section(header: Text("Verify Scanned Information")) {
                     TextField("Item Name", text: $name)
                     
-                    HStack {
-                        Text("$")
-                        TextField("0.00", text: $costString)
-                            .keyboardType(.decimalPad)
-                        
-                        Button(action: {
-                            setupPriceSearch()
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(name.isEmpty ? .gray : .purple)
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("$")
+                            TextField("0.00", text: $costString)
+                                .keyboardType(.decimalPad)
                         }
-                        .disabled(name.isEmpty)
+                        
+                        HStack(spacing: 20) {
+                            // Web search button
+                            Button(action: {
+                                setupPriceSearch()
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                    Text("Search Price")
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(name.isEmpty ? .gray : .white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(name.isEmpty ? Color.gray.opacity(0.3) : Color.purple)
+                                .cornerRadius(8)
+                            }
+                            .disabled(name.isEmpty)
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Custom price search button
+                            Button(action: {
+                                showingCustomPriceSearch = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "list.bullet.rectangle")
+                                    Text("Search Price List")
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(name.isEmpty || !customPriceListStore.hasLists ? .gray : .white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(name.isEmpty || !customPriceListStore.hasLists ? Color.gray.opacity(0.3) : Color.orange)
+                                .cornerRadius(8)
+                            }
+                            .disabled(name.isEmpty || !customPriceListStore.hasLists)
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -317,6 +353,21 @@ struct VerifyItemView: View {
                     selectedItemName: $webViewSelectedItemName,
                     settingsService: settingsService
                 )
+            }
+            .sheet(isPresented: $showingCustomPriceSearch) {
+                CustomPriceSearchView(customPriceListStore: customPriceListStore) { item, list in
+                    costString = String(format: "%.2f", item.price)
+                    if name.isEmpty {
+                        name = item.name
+                    }
+                    
+                    // Update analysis issues
+                    dynamicAnalysisIssues.removeAll { $0.contains("custom price") }
+                    let issueText = "Custom price selected - \(item.name) at $\(String(format: "%.2f", item.price)) from \(list.name)"
+                    dynamicAnalysisIssues.append(issueText)
+                    
+                    showingCustomPriceSearch = false
+                }
             }
             .onChange(of: webViewSelectedPrice) { price in
                 if let price = price {

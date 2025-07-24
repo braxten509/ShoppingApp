@@ -42,28 +42,19 @@ struct SearchTabView: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject var settingsService: SettingsService
     @ObservedObject var aiService: AIService
+    @ObservedObject var customPriceListStore: CustomPriceListStore
     let prefillItemName: String
     
-    init(store: ShoppingListStore, locationManager: LocationManager, settingsService: SettingsService, aiService: AIService, prefillItemName: String = "") {
+    init(store: ShoppingListStore, locationManager: LocationManager, settingsService: SettingsService, aiService: AIService, customPriceListStore: CustomPriceListStore, prefillItemName: String = "") {
         self.store = store
         self.locationManager = locationManager
         self.settingsService = settingsService
         self.aiService = aiService
+        self.customPriceListStore = customPriceListStore
         self.prefillItemName = prefillItemName
         
-        // Initialize selectedWebsite immediately to avoid timing issues
-        if !settingsService.stores.isEmpty {
-            if let defaultStore = settingsService.getDefaultStore() {
-                self._selectedWebsite = State(initialValue: defaultStore.name)
-                print("🔍 SearchTabView init: Set default store '\(defaultStore.name)'")
-            } else {
-                self._selectedWebsite = State(initialValue: settingsService.stores.first!.name)
-                print("🔍 SearchTabView init: Set first store '\(settingsService.stores.first!.name)'")
-            }
-        } else {
-            self._selectedWebsite = State(initialValue: "")
-            print("❌ SearchTabView init: No stores available")
-        }
+        // Initialize selectedWebsite with empty string - will be set in onAppear
+        self._selectedWebsite = State(initialValue: "")
     }
     
     @State private var itemName = ""
@@ -133,6 +124,7 @@ struct SearchTabView: View {
                         locationManager: locationManager,
                         aiService: aiService,
                         settingsService: settingsService,
+                        customPriceListStore: customPriceListStore,
                         prefillName: currentData?.name,
                         prefillPrice: currentData?.price
                     )
@@ -140,6 +132,17 @@ struct SearchTabView: View {
             }
             .onAppear {
                 print("🔍 SearchTabView onAppear: selectedWebsite = '\(selectedWebsite)', stores count = \(settingsService.stores.count)")
+                
+                // Set default store if not already set
+                if selectedWebsite.isEmpty && !settingsService.stores.isEmpty {
+                    if let defaultStore = settingsService.getDefaultStore() {
+                        selectedWebsite = defaultStore.name
+                        print("🔍 SearchTabView onAppear: Set default store '\(defaultStore.name)'")
+                    } else {
+                        selectedWebsite = settingsService.stores.first!.name
+                        print("🔍 SearchTabView onAppear: Set first store '\(settingsService.stores.first!.name)'")
+                    }
+                }
             }
             .onChange(of: prefillItemName) { _, newValue in
                 print("🔍 SearchTabView: prefillItemName changed to: '\(newValue)' (selectedWebsite='\(selectedWebsite)')")

@@ -78,13 +78,13 @@ struct CustomPriceListsView: View {
         .sheet(isPresented: $showingAddList) {
             AddEditCustomPriceListView(
                 customPriceListStore: customPriceListStore,
-                list: nil
+                listId: nil  // nil for adding a new list
             )
         }
         .sheet(item: $editingList) { list in
             AddEditCustomPriceListView(
                 customPriceListStore: customPriceListStore,
-                list: list
+                listId: list.id  // Pass the ID instead of the list
             )
         }
         .alert("Delete Price List", isPresented: $showingDeleteAlert) {
@@ -244,7 +244,7 @@ struct CustomPriceListRowView: View {
 
 struct AddEditCustomPriceListView: View {
     @ObservedObject var customPriceListStore: CustomPriceListStore
-    let list: CustomPriceList?
+    let listId: UUID?  // Changed to store ID instead of the list itself
     @Environment(\.dismiss) private var dismiss
     
     @State private var name: String = ""
@@ -254,7 +254,13 @@ struct AddEditCustomPriceListView: View {
     @State private var editingItemWrapper: EditingItemWrapper?
     
     var isEditing: Bool {
-        list != nil
+        listId != nil
+    }
+    
+    // Get the current list from the store
+    var currentList: CustomPriceList? {
+        guard let listId = listId else { return nil }
+        return customPriceListStore.customPriceLists.first { $0.id == listId }
     }
     
     var body: some View {
@@ -264,7 +270,7 @@ struct AddEditCustomPriceListView: View {
                     TextField("List Name", text: $name)
                 }
                 
-                if isEditing, let list = list {
+                if isEditing, let list = currentList {  // Use currentList instead of passed-in list
                     Section(header: Text("Items (\(list.items.count))")) {
                         if list.items.isEmpty {
                             Text("No items yet")
@@ -328,12 +334,12 @@ struct AddEditCustomPriceListView: View {
             }
         }
         .onAppear {
-            if let list = list {
+            if let list = currentList {
                 name = list.name
             }
         }
         .sheet(isPresented: $showingAddItem) {
-            if let list = list {
+            if let list = currentList {
                 AddEditCustomPriceItemView(
                     customPriceListStore: customPriceListStore,
                     listId: list.id,
@@ -357,7 +363,6 @@ struct AddEditCustomPriceListView: View {
         }
     }
     
-    
     private func saveList() {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             validationMessage = "Please provide a list name."
@@ -367,7 +372,7 @@ struct AddEditCustomPriceListView: View {
         
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        if isEditing, let list = list,
+        if isEditing, let list = currentList,
            let index = customPriceListStore.getListIndex(by: list.id) {
             var updatedList = list
             updatedList.updateName(trimmedName)

@@ -274,9 +274,20 @@ struct AddItemView: View {
     private var measurementTotal: some View {
         if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
             let totalCost = cost * quantity
-            Text("Total: $\(String(format: "%.2f", totalCost)) ($\(String(format: "%.2f", cost)) per \(selectedMeasurementUnit.singularForm))")
-                .font(.caption)
-                .foregroundColor(.green)
+            let taxRate = getCurrentTaxRate()
+            // Fix: Use proper rounding for tax calculation
+            let taxAmount = round(totalCost * taxRate) / 100.0
+            let totalWithTax = totalCost + taxAmount
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Total: $\(String(format: "%.2f", totalCost)) ($\(String(format: "%.2f", cost)) per \(selectedMeasurementUnit.singularForm))")
+                    .font(.caption)
+                    .foregroundColor(.green)
+                
+                Text("With Tax: $\(String(format: "%.2f", totalWithTax))")
+                    .font(.caption)
+                    .foregroundColor(.primary)
+            }
         }
     }
     

@@ -159,10 +159,22 @@ struct ItemEditView: View {
                                 .pickerStyle(MenuPickerStyle())
                             }
                             
+                            // Replace the measurement total calculation with this:
                             if let cost = Double(costString), let quantity = Double(measurementQuantityString) {
-                                Text("Total: $\(cost * quantity, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.singularForm))")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
+                                let totalCost = cost * quantity
+                                let taxRate = Double(taxRateString) ?? 0
+                                let taxAmount = round(totalCost * taxRate) / 100.0
+                                let totalWithTax = totalCost + taxAmount
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Total: $\(totalCost, specifier: "%.2f") ($\(cost, specifier: "%.2f") per \(selectedMeasurementUnit.singularForm))")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                    
+                                    Text("With Tax: $\(totalWithTax, specifier: "%.2f")")
+                                        .font(.caption)
+                                        .foregroundColor(.primary)
+                                }
                             }
                         }
                     }
@@ -190,11 +202,15 @@ struct ItemEditView: View {
                 }
                 
                 
+                // Replace the preview section in the Form with this corrected version:
                 Section(header: Text("Preview")) {
                     let quantity = max(1, Int(quantityString) ?? 1)
                     let unitPrice = Double(costString) ?? 0
                     let subtotal = unitPrice * Double(quantity)
-                    let taxAmount = subtotal * (Double(taxRateString) ?? 0) / 100
+                    
+                    // Fix: Use proper rounding for tax calculation
+                    let taxRate = Double(taxRateString) ?? 0
+                    let taxAmount = round(subtotal * taxRate) / 100.0
                     let total = subtotal + taxAmount
                     
                     if quantity > 1 {

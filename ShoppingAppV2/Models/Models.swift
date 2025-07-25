@@ -56,15 +56,21 @@ struct ShoppingItem: Identifiable, Codable {
         self.measurementUnit = measurementUnit
         self.dateAdded = Date()
     }
+    
     var unitCost: Double {
         return cost
     }
+    
     var subtotal: Double {
         return actualCost * Double(quantity)
     }
+    
     var taxAmount: Double {
-        return subtotal * (taxRate / 100)
+        // Fix: Calculate tax per item and then multiply by quantity for proper financial calculation
+        let taxPerItem = round(actualCost * taxRate) / 100.0
+        return taxPerItem * Double(quantity)
     }
+    
     var totalCost: Double {
         return subtotal + taxAmount
     }

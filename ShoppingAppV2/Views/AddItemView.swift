@@ -324,11 +324,12 @@ struct AddItemView: View {
             Text("Tax:")
             Spacer()
             let taxRate = getCurrentTaxRate()
-            let taxAmount = actualCost * taxRate / 100
+            // Fix: Use proper rounding for currency calculation
+            let taxAmount = round(actualCost * taxRate) / 100.0
             Text("$\(taxAmount, specifier: "%.2f")")
         }
     }
-    
+
     @ViewBuilder
     private var totalRow: some View {
         HStack {
@@ -336,7 +337,9 @@ struct AddItemView: View {
                 .fontWeight(.bold)
             Spacer()
             let taxRate = getCurrentTaxRate()
-            let totalAmount = actualCost + actualCost * taxRate / 100
+            // Fix: Use proper rounding for currency calculation
+            let taxAmount = round(actualCost * taxRate) / 100.0
+            let totalAmount = actualCost + taxAmount
             Text("$\(totalAmount, specifier: "%.2f")")
                 .fontWeight(.bold)
         }
@@ -562,9 +565,13 @@ struct AddItemView: View {
         // Update measurement quantity from string
         measurementQuantity = Double(measurementQuantityString) ?? 1.0
         
+        // Fix: Calculate tax with proper rounding
+        let baseCost = Double(costString) ?? 0
+        let taxAmount = round(baseCost * finalTaxRate) / 100.0
+        
         let item = ShoppingItem(
             name: name.isEmpty ? "Unnamed Item" : name,
-            cost: Double(costString) ?? 0,
+            cost: baseCost,
             taxRate: finalTaxRate,
             hasUnknownTax: hasUnknownTax,
             isPriceByMeasurement: isPriceByMeasurement,

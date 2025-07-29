@@ -54,18 +54,37 @@ struct CalculatorView: View {
     var body: some View {
         let _ = print("🔄 CalculatorView.body computed - Store: \(selectedStore?.name ?? "nil"), CustomList: \(selectedCustomPriceList?.name ?? "nil")")
         return NavigationView {
-            VStack(spacing: 16) {
-                // Location Header
-                locationHeader
+            VStack(spacing: 0) {
+                List {
+                    // Location Header Section
+                    Section {
+                        locationHeaderContent
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    
+                    // Calculator Section
+                    Section {
+                        calculatorSectionContent
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    
+                    // Items Section
+                    if !store.items.isEmpty {
+                        Section("Items") {
+                            ForEach(Array(store.items.enumerated()), id: \.element.id) { index, item in
+                                itemRow(item: item, index: index)
+                            }
+                            .onDelete(perform: deleteItems)
+                        }
+                    }
+                }
+                .listStyle(PlainListStyle())
                 
-                // Calculator Section
-                calculatorSection
-                
-                // Items List
-                itemsList
-                
-                // Action Buttons
-                actionButtons
+                // Action Buttons - Fixed at bottom
+                actionButtonsContent
+                    .background(Color(.systemBackground))
             }
             .navigationTitle("Shopping Calculator")
             .navigationBarTitleDisplayMode(.large)
@@ -166,7 +185,7 @@ struct CalculatorView: View {
         }
     }
     
-    private var locationHeader: some View {
+    private var locationHeaderContent: some View {
         VStack(spacing: 4) {
             HStack {
                 // Location section
@@ -306,10 +325,6 @@ struct CalculatorView: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
-            .background(
-                Color(.systemGray6)
-                    .ignoresSafeArea(edges: .top)
-            )
         }
         .onAppear {
             print("🔄 CalculatorView.onAppear - Store: \(selectedStore?.name ?? "nil"), CustomList: \(selectedCustomPriceList?.name ?? "nil")")
@@ -358,7 +373,7 @@ struct CalculatorView: View {
         }
     }
     
-    private var calculatorSection: some View {
+    private var calculatorSectionContent: some View {
         VStack(spacing: 12) {
             HStack {
                 Text("Subtotal:")
@@ -392,100 +407,95 @@ struct CalculatorView: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
-        .padding(.horizontal)
     }
     
-    private var itemsList: some View {
-        List {
-            ForEach(Array(store.items.enumerated()), id: \.element.id) { index, item in
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
+    private func itemRow(item: ShoppingItem, index: Int) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name)
+                                .font(.headline)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name)
-                                    .font(.headline)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        if item.isPriceByMeasurement {
-                                            Text("$\(item.cost, specifier: "%.2f") per \(item.measurementUnit)")
-                                        } else {
-                                            if item.quantity > 1 {
-                                                Text("$\(item.unitCost, specifier: "%.2f") each")
-                                            } else {
-                                                Text("$\(item.cost, specifier: "%.2f")")
-                                            }
-                                        }
-                                        if item.hasUnknownTax {
-                                            Text("+ Unknown tax")
-                                                .foregroundColor(.secondary)
-                                        } else {
-                                            Text("+ \(item.taxRate, specifier: "%.1f")% tax")
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
-                                    
+                                HStack {
                                     if item.isPriceByMeasurement {
-                                        Text("\(item.measurementQuantity, specifier: "%.1f") \(item.measurementUnit) = $\(item.actualCost, specifier: "%.2f")")
-                                            .font(.caption2)
-                                            .foregroundColor(.blue)
+                                        Text("$\(item.cost, specifier: "%.2f") per \(item.measurementUnit)")
+                                    } else {
+                                        if item.quantity > 1 {
+                                            Text("$\(item.unitCost, specifier: "%.2f") each")
+                                        } else {
+                                            Text("$\(item.cost, specifier: "%.2f")")
+                                        }
+                                    }
+                                    if item.hasUnknownTax {
+                                        Text("+ Unknown tax")
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("+ \(item.taxRate, specifier: "%.1f")% tax")
+                                            .foregroundColor(.secondary)
                                     }
                                 }
-                                .font(.caption)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                editingItem = item
-                            }
-                            
-                            Spacer()
-                            
-                            // Quantity controls
-                            HStack(spacing: 8) {
-                                Button(action: {
-                                    decreaseQuantity(at: index)
-                                }) {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundColor(item.quantity > 1 ? .red : .gray)
-                                        .font(.system(size: 22))
-                                }
-                                .disabled(item.quantity <= 1)
-                                .buttonStyle(PlainButtonStyle())
                                 
-                                Text("\(item.quantity)")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .frame(minWidth: 25)
-                                
-                                Button(action: {
-                                    increaseQuantity(at: index)
-                                }) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.green)
-                                        .font(.system(size: 22))
+                                if item.isPriceByMeasurement {
+                                    Text("\(item.measurementQuantity, specifier: "%.1f") \(item.measurementUnit) = $\(item.actualCost, specifier: "%.2f")")
+                                        .font(.caption2)
+                                        .foregroundColor(.blue)
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
-                            .padding(.horizontal, 8)
+                            .font(.caption)
                         }
-                    }
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("$\(item.totalCost, specifier: "%.2f")")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                        Text("($\(item.taxAmount, specifier: "%.2f") tax)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            editingItem = item
+                        }
+                        
+                        Spacer()
+                        
+                        // Quantity controls
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                decreaseQuantity(at: index)
+                            }) {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundColor(item.quantity > 1 ? .red : .gray)
+                                    .font(.system(size: 22))
+                            }
+                            .disabled(item.quantity <= 1)
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            Text("\(item.quantity)")
+                                .font(.system(size: 18, weight: .semibold))
+                                .frame(minWidth: 25)
+                            
+                            Button(action: {
+                                increaseQuantity(at: index)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.system(size: 22))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(.horizontal, 8)
                     }
                 }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("$\(item.totalCost, specifier: "%.2f")")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                    Text("($\(item.taxAmount, specifier: "%.2f") tax)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
-            .onDelete(perform: deleteItems)
         }
-        .listStyle(PlainListStyle())
     }
     
-    private var actionButtons: some View {
+    private var actionButtonsContent: some View {
         VStack(spacing: 12) {
             if isProcessingImage {
                 HStack {
@@ -532,7 +542,7 @@ struct CalculatorView: View {
                 .disabled(isProcessingImage)
             }
             .padding(.horizontal)
-            .padding(.bottom)
+            .padding(.vertical)
         }
     }
     

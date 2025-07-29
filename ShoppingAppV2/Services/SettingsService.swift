@@ -13,6 +13,10 @@ class SettingsService: ObservableObject {
 
     @Published var selectedModelForTaxRate: String {
         didSet {
+            // Always enforce sonar-pro for tax rate analysis
+            if selectedModelForTaxRate != "sonar-pro" {
+                selectedModelForTaxRate = "sonar-pro"
+            }
             UserDefaults.standard.set(selectedModelForTaxRate, forKey: "selectedModelForTaxRate")
         }
     }
@@ -136,6 +140,30 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var useMultiAttemptTaxDetection: Bool {
+        didSet {
+            UserDefaults.standard.set(useMultiAttemptTaxDetection, forKey: "useMultiAttemptTaxDetection")
+        }
+    }
+    
+    @Published var taxDetectionAttempts: Int {
+        didSet {
+            UserDefaults.standard.set(taxDetectionAttempts, forKey: "taxDetectionAttempts")
+        }
+    }
+    
+    @Published var taxSearchContextSize: String {
+        didSet {
+            UserDefaults.standard.set(taxSearchContextSize, forKey: "taxSearchContextSize")
+        }
+    }
+    
+    @Published var taxSearchRecencyFilter: String? {
+        didSet {
+            UserDefaults.standard.set(taxSearchRecencyFilter, forKey: "taxSearchRecencyFilter")
+        }
+    }
+    
     // Tax rate caching for consistency
     @Published var cachedTaxRates: [String: Double] {
         didSet {
@@ -181,7 +209,9 @@ class SettingsService: ObservableObject {
 
     init() {
         self.useAIModels = UserDefaults.standard.bool(forKey: "useAIModels")
-        self.selectedModelForTaxRate = UserDefaults.standard.string(forKey: "selectedModelForTaxRate") ?? "sonar"
+        // Always use sonar-pro for tax rate analysis
+        self.selectedModelForTaxRate = "sonar-pro"
+        UserDefaults.standard.set("sonar-pro", forKey: "selectedModelForTaxRate")
         self.selectedModelForPhotoPrice = UserDefaults.standard.string(forKey: "selectedModelForPhotoPrice") ?? "gpt-4o-mini"
         self.openAIAPIKey = UserDefaults.standard.string(forKey: "openAIAPIKey") ?? ""
         self.perplexityAPIKey = UserDefaults.standard.string(forKey: "perplexityAPIKey") ?? ""
@@ -230,6 +260,25 @@ class SettingsService: ObservableObject {
         }
         self.replaceItemNameFromPriceList = UserDefaults.standard.bool(forKey: "replaceItemNameFromPriceList")
         
+        // Initialize multi-attempt tax detection settings
+        if UserDefaults.standard.object(forKey: "useMultiAttemptTaxDetection") == nil {
+            UserDefaults.standard.set(false, forKey: "useMultiAttemptTaxDetection")
+        }
+        self.useMultiAttemptTaxDetection = UserDefaults.standard.bool(forKey: "useMultiAttemptTaxDetection")
+        
+        if UserDefaults.standard.object(forKey: "taxDetectionAttempts") == nil {
+            UserDefaults.standard.set(3, forKey: "taxDetectionAttempts")
+        }
+        self.taxDetectionAttempts = UserDefaults.standard.integer(forKey: "taxDetectionAttempts")
+        
+        // Initialize tax search settings
+        if UserDefaults.standard.object(forKey: "taxSearchContextSize") == nil {
+            UserDefaults.standard.set("high", forKey: "taxSearchContextSize")
+        }
+        self.taxSearchContextSize = UserDefaults.standard.string(forKey: "taxSearchContextSize") ?? "high"
+        
+        self.taxSearchRecencyFilter = UserDefaults.standard.string(forKey: "taxSearchRecencyFilter")
+        
         // Initialize cached tax rates
         if let data = UserDefaults.standard.data(forKey: "cachedTaxRates"),
            let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
@@ -260,65 +309,18 @@ class SettingsService: ObservableObject {
     func getTaxRatePrompt(itemName: String, location: String?) -> String {
         if let location = location {
             return """
-            What is the current sales tax rate for purchasing \(itemName) in \(location)?
-            
-            CRITICAL: You must determine the correct tax category for this item:
-            
-            FOOD/GROCERY ITEMS (fruits, vegetables, meat, dairy, bread, unprepared food, etc.):
-            - Many jurisdictions have reduced or zero tax rates for grocery food items
-            - Look up the specific grocery/food tax rate for this exact location
-            - This often differs significantly from general merchandise tax rates
-            
-            NON-FOOD ITEMS (electronics, clothing, household goods, etc.):
-            - Subject to full combined sales tax rate
-            - Includes all applicable state, local, and special district taxes
-            
-            PREPARED FOOD (restaurant meals, hot prepared food, etc.):
-            - Usually taxed at full rate even if food-related
-            - Different from unprepared grocery items
-            
-            Research the exact current tax rate for this specific item category in this specific location.
-            Be very precise - grocery items often have significantly different rates than general merchandise.
-            
-            Respond with ONLY a JSON object in this exact format:
-            {"taxRate": X.X}
-            
-            Where X.X is the total combined tax percentage as a decimal number (e.g., 3.0 for 3%, 8.25 for 8.25%).
-            Do not include any other text, explanations, or formatting.
+            What is the sales tax for \(itemName) in \(location)? Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX). Please provide the answer at the end of your analysis, and only once.
             """
         } else {
             return """
-            What is the typical sales tax rate for purchasing \(itemName) without a specific location?
-            
-            CRITICAL: You must determine the correct tax category for this item:
-            
-            FOOD/GROCERY ITEMS (fruits, vegetables, meat, dairy, bread, unprepared food, etc.):
-            - Many jurisdictions have reduced or zero tax rates for grocery food items
-            - Provide a reasonable estimate based on common grocery tax rates
-            - This is often much lower than general merchandise rates
-            
-            NON-FOOD ITEMS (electronics, clothing, household goods, etc.):
-            - Subject to typical combined sales tax rates
-            - Provide a reasonable average rate for general merchandise
-            
-            PREPARED FOOD (restaurant meals, hot prepared food, etc.):
-            - Usually taxed at full rate even if food-related
-            - Different from unprepared grocery items
-            
-            Provide a reasonable estimate based on the item category.
-            
-            Respond with ONLY a JSON object in this exact format:
-            {"taxRate": X.X}
-            
-            Where X.X is the tax percentage as a decimal number (e.g., 3.0 for 3%, 7.0 for 7%).
-            Do not include any other text, explanations, or formatting.
+            What is the typical sales tax for \(itemName)? Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX).
             """
         }
     }
     
     
     func resetAllModels() {
-        selectedModelForTaxRate = "sonar"
+        // Tax rate is always sonar-pro, only reset photo model
         selectedModelForPhotoPrice = "gpt-4o-mini"
     }
     

@@ -7,6 +7,9 @@ struct SettingsView: View {
     @ObservedObject var store: ShoppingListStore
     @ObservedObject var historyService: HistoryService
     @ObservedObject var customPriceListStore: CustomPriceListStore
+    @ObservedObject var aiService: AIService
+    @ObservedObject var locationManager: LocationManager
+    @ObservedObject var billingService: BillingService
     @Environment(\.presentationMode) var presentationMode
     @State private var showingPromptsHistory = false
     @State private var apiKeyInput: String = ""
@@ -113,6 +116,25 @@ struct SettingsView: View {
                                     .font(.headline)
                                     .foregroundColor(.primary)
                                 Text("Manage app features and data usage")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            
+                            Spacer()
+                        }
+                    }
+                    
+                    NavigationLink(destination: DeveloperToolsView(aiService: aiService, settingsService: settingsService, locationManager: locationManager, billingService: billingService, historyService: historyService)) {
+                        HStack {
+                            Image(systemName: "wrench.and.screwdriver.fill")
+                                .foregroundColor(.gray)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Developer Tools")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("Testing and development utilities")
                                     .foregroundColor(.secondary)
                                     .font(.caption)
                             }
@@ -308,11 +330,17 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView(
+    let settingsService = SettingsService()
+    let billingService = BillingService()
+    let historyService = HistoryService()
+    return SettingsView(
         openAIService: OpenAIService(),
-        settingsService: SettingsService(),
+        settingsService: settingsService,
         store: ShoppingListStore(),
-        historyService: HistoryService(),
-        customPriceListStore: CustomPriceListStore()
+        historyService: historyService,
+        customPriceListStore: CustomPriceListStore(),
+        aiService: AIService(settingsService: settingsService, billingService: billingService, historyService: historyService),
+        locationManager: LocationManager(),
+        billingService: billingService
     )
 }

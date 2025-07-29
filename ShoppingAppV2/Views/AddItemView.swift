@@ -15,10 +15,11 @@ struct AddItemView: View {
     
     @State private var name: String
     @State private var costString: String
-    @State private var taxMode: TaxMode = .defaultMode
+    @State private var taxMode: TaxMode
     @State private var customTaxRateString = "0.00"
     @State private var detectedTaxRate: Double? = nil
     @State private var isDetectingTax = false
+    @State private var taxDetectionProgress = (current: 0, total: 0)
     @State private var showingPriceSearchAlert = false
     @State private var priceSearchSpecification = ""
     @State private var selectedWebsite = ""
@@ -51,6 +52,10 @@ struct AddItemView: View {
         self._name = State(initialValue: prefillName ?? "")
         self._costString = State(initialValue: prefillPrice != nil ? String(format: "%.2f", prefillPrice!) : "")
         
+        // Set initial tax mode based on settings
+        let initialTaxMode: TaxMode = settingsService.useManualTaxRate ? .defaultMode : .ai
+        self._taxMode = State(initialValue: initialTaxMode)
+        
         // Initialize selectedWebsite properly to avoid empty string issues
         let websiteToUse: String
         if let selectedStore = selectedStore {
@@ -66,7 +71,7 @@ struct AddItemView: View {
     }
     
     enum TaxMode: String, CaseIterable {
-        case defaultMode = "Default"
+        case defaultMode = "Manual"
         case ai = "AI"
         case customValue = "Custom"
         
@@ -313,8 +318,13 @@ struct AddItemView: View {
                 HStack {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Calculating taxes...")
-                        .foregroundColor(.secondary)
+                    if settingsService.useMultiAttemptTaxDetection && taxDetectionProgress.total > 0 {
+                        Text("Calculating taxes... (\(taxDetectionProgress.current)/\(taxDetectionProgress.total))")
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Calculating taxes...")
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }
@@ -543,10 +553,22 @@ struct AddItemView: View {
         
         Task {
             do {
-                let detectedTaxRate = try await aiService.analyzeItemForTax(itemName: name, location: locationString)
+                // Set up initial progress for multi-attempt detection
+                if settingsService.useMultiAttemptTaxDetection {
+                    DispatchQueue.main.async {
+                        self.taxDetectionProgress = (current: 0, total: settingsService.taxDetectionAttempts)
+                    }
+                }
+                
+                let detectedTaxRate = try await aiService.analyzeItemForTax(itemName: name, location: locationString) { current, total in
+                    DispatchQueue.main.async {
+                        self.taxDetectionProgress = (current: current, total: total)
+                    }
+                }
                 
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
+                    self.taxDetectionProgress = (current: 0, total: 0)
                     self.detectedTaxRate = detectedTaxRate
                     if andAddItem {
                         self.addItem()
@@ -555,6 +577,7 @@ struct AddItemView: View {
             } catch {
                 DispatchQueue.main.async {
                     self.isDetectingTax = false
+                    self.taxDetectionProgress = (current: 0, total: 0)
                     self.detectedTaxRate = nil
                     self.currentErrorMessage = error.localizedDescription
                     self.showingTaxErrorAlert = true
@@ -651,8 +674,13 @@ struct AddItemView: View {
                 HStack {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Detecting tax rate...")
-                        .foregroundColor(.secondary)
+                    if settingsService.useMultiAttemptTaxDetection && taxDetectionProgress.total > 0 {
+                        Text("Detecting tax rate... (\(taxDetectionProgress.current)/\(taxDetectionProgress.total))")
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Detecting tax rate...")
+                            .foregroundColor(.secondary)
+                    }
                 }
             } else if let detected = detectedTaxRate {
                 HStack {
@@ -666,8 +694,13 @@ struct AddItemView: View {
                 HStack {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Detecting tax rate...")
-                        .foregroundColor(.secondary)
+                    if settingsService.useMultiAttemptTaxDetection && taxDetectionProgress.total > 0 {
+                        Text("Detecting tax rate... (\(taxDetectionProgress.current)/\(taxDetectionProgress.total))")
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Detecting tax rate...")
+                            .foregroundColor(.secondary)
+                    }
                 }
             } else if let detected = detectedTaxRate {
                 HStack {

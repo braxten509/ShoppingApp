@@ -50,10 +50,15 @@ class AIService: ObservableObject {
     }
     
 
-    func analyzeItemForTax(itemName: String, location: String? = nil, retryCount: Int = 0) async throws -> Double? {
+    func analyzeItemForTax(itemName: String, location: String? = nil, retryCount: Int = 0, progressCallback: ((Int, Int) -> Void)? = nil) async throws -> Double? {
         // Check if manual tax rate is enabled
         if settingsService.useManualTaxRate {
             return settingsService.manualTaxRate
+        }
+        
+        // Check if multi-attempt detection is enabled
+        if settingsService.useMultiAttemptTaxDetection && retryCount == 0 {
+            return try await performMultiAttemptTaxDetection(itemName: itemName, location: location, progressCallback: progressCallback)
         }
         
         let model = settingsService.selectedModelForTaxRate
@@ -62,7 +67,7 @@ class AIService: ObservableObject {
 
         let prompt = settingsService.getTaxRatePrompt(itemName: itemName, location: location)
         
-        let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model)
+        let (data, _) = try await performRequest(prompt: prompt, apiKey: apiKey, url: url, model: model, includeSearchOptions: true)
         
         print("Raw response from \(model) for tax analysis: \(String(data: data, encoding: .utf8) ?? "No response")")
 
@@ -85,26 +90,23 @@ class AIService: ObservableObject {
             // Fallback: try to extract tax rate from text
             print("JSON parsing failed, attempting to extract tax rate from text: \(content)")
             
-            // Look for patterns like "6.0%", "6%", "tax rate is 6.0", "taxRate": 6.0, etc.
+            // Look specifically for the XX3.00XX format as requested by the user
             let patterns = [
-                #"(?:sales tax rate|tax rate|combined.*?rate).*?(?:is )?(\d+(?:\.\d+)?)%"#,
-                #"(\d+(?:\.\d+)?)%.*?(?:sales tax|tax rate)"#,
-                #"\"?taxRate\"?\s*:\s*(\d+(?:\.\d+)?)"#,
-                #"\{[^}]*\"?taxRate\"?[^}]*?(\d+(?:\.\d+)?)[^}]*\}"#,
-                #"(\d+(?:\.\d+)?)%"#,
-                #"(\d+(?:\.\d+)?)\s*percent"#,
-                #"rate.*?(\d+(?:\.\d+)?)"#
+                #"XX(\d+(?:\.\d+)?)XX"#  // Matches XX3.00XX format and extracts the number
             ]
             
             var extractedRate: Double?
             for pattern in patterns {
+                print("Trying pattern: \(pattern) on content: '\(content)'")
                 if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
                    let match = regex.firstMatch(in: content, options: [], range: NSRange(content.startIndex..., in: content)),
                    let range = Range(match.range(at: 1), in: content) {
                     let rateString = String(content[range])
                     extractedRate = Double(rateString)
-                    print("Extracted tax rate: \(extractedRate ?? 0) from pattern: \(pattern)")
+                    print("✅ Extracted tax rate: \(extractedRate ?? 0) from pattern: \(pattern)")
                     break
+                } else {
+                    print("❌ Pattern failed: \(pattern)")
                 }
             }
             
@@ -171,6 +173,46 @@ class AIService: ObservableObject {
                 NSLocalizedDescriptionKey: errorMessage
             ])
         }
+    }
+    
+    private func performMultiAttemptTaxDetection(itemName: String, location: String?, progressCallback: ((Int, Int) -> Void)?) async throws -> Double? {
+        let totalAttempts = settingsService.taxDetectionAttempts
+        var responses: [Double] = []
+        
+        print("🔄 Starting multi-attempt tax detection for '\(itemName)' with \(totalAttempts) attempts")
+        
+        for attempt in 1...totalAttempts {
+            progressCallback?(attempt, totalAttempts)
+            
+            do {
+                // Call the single attempt method with retryCount > 0 to avoid infinite recursion
+                let taxRate = try await analyzeItemForTax(itemName: itemName, location: location, retryCount: 1)
+                if let rate = taxRate {
+                    responses.append(rate)
+                    print("📊 Tax attempt \(attempt)/\(totalAttempts): \(String(format: "%.2f%%", rate))")
+                } else {
+                    print("❌ Tax attempt \(attempt)/\(totalAttempts): No rate returned")
+                }
+            } catch {
+                print("❌ Tax attempt \(attempt)/\(totalAttempts) failed: \(error)")
+            }
+        }
+        
+        // Find the most common response
+        if responses.isEmpty {
+            throw NSError(domain: "TaxAnalysisError", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "All \(totalAttempts) tax detection attempts failed for '\(itemName)'"
+            ])
+        }
+        
+        let responseCounts = Dictionary(grouping: responses, by: { $0 }).mapValues { $0.count }
+        let mostCommon = responseCounts.max(by: { $0.value < $1.value })
+        let mostCommonRate = mostCommon?.key ?? responses.first!
+        let occurrences = mostCommon?.value ?? 1
+        
+        print("✅ Multi-attempt tax detection complete: \(String(format: "%.2f%%", mostCommonRate)) appeared \(occurrences)/\(responses.count) times")
+        
+        return mostCommonRate
     }
 
     func analyzePriceTag(image: UIImage, location: String? = nil) async throws -> PriceTagInfo {
@@ -302,7 +344,7 @@ class AIService: ObservableObject {
     
 
 
-    private func performRequest(prompt: String, apiKey: String, url: URL, model: String, image: UIImage? = nil) async throws -> (Data, URLResponse) {
+    private func performRequest(prompt: String, apiKey: String, url: URL, model: String, image: UIImage? = nil, includeSearchOptions: Bool = false) async throws -> (Data, URLResponse) {
         guard !apiKey.isEmpty else {
             throw NSError(domain: "APIError", code: -1, userInfo: [NSLocalizedDescriptionKey: "API key not configured for \(model)."])
         }
@@ -353,6 +395,20 @@ class AIService: ObservableObject {
                     ],
                     "max_tokens": 300
                 ]
+                
+                // Add web search options for Perplexity models
+                if includeSearchOptions && (model.hasPrefix("sonar")) {
+                    var webSearchOptions: [String: Any] = [
+                        "search_context_size": settingsService.taxSearchContextSize
+                    ]
+                    
+                    if let recencyFilter = settingsService.taxSearchRecencyFilter, !recencyFilter.isEmpty {
+                        webSearchOptions["search_recency_filter"] = recencyFilter
+                    }
+                    
+                    payload["web_search_options"] = webSearchOptions
+                    print("🔍 Added web search options: \(webSearchOptions)")
+                }
             }
         }
 

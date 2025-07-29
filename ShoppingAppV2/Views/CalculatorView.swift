@@ -175,7 +175,7 @@ struct CalculatorView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(openAIService: openAIService, settingsService: settingsService, store: store, historyService: historyService, customPriceListStore: customPriceListStore)
+                SettingsView(openAIService: openAIService, settingsService: settingsService, store: store, historyService: historyService, customPriceListStore: customPriceListStore, aiService: aiService, locationManager: locationManager, billingService: billingService)
             }
             .onChange(of: selectedImage) { _, image in
                 if let image = image {

@@ -233,12 +233,15 @@ struct CreditSyncWebView: View {
     @Binding var isPresented: Bool
     let onCreditsFound: (Double) -> Void
     let onCompleted: (() -> Void)?
+    let onError: ((String) -> Void)?
     
     @State private var isAuthenticated = false
     @State private var authenticationError: String?
     @State private var hasAttemptedSync = false
     @State private var isWebViewLoading = true
     @State private var isSyncingCredits = false
+    @State private var syncError: String?
+    @State private var showingError = false
     
     var body: some View {
         NavigationView {
@@ -258,11 +261,23 @@ struct CreditSyncWebView: View {
                             isLoading: $isWebViewLoading,
                             onSyncStarted: {
                                 isSyncingCredits = true
+                            },
+                            onError: { error in
+                                syncError = error
+                                showingError = true
+                                onError?(error)
+                                
+                                // Continue after showing error for 1 second
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                    showingError = false
+                                    isPresented = false
+                                    onCompleted?()
+                                }
                             }
                         )
                         
                         // Loading overlay for credit sync - only show when actually syncing
-                        if isSyncingCredits && !isWebViewLoading {
+                        if isSyncingCredits && !isWebViewLoading && !showingError {
                             Color.gray.opacity(0.8)
                                 .ignoresSafeArea()
                             
@@ -274,6 +289,35 @@ struct CreditSyncWebView: View {
                                 Text("Syncing \(provider) Credits...")
                                     .foregroundColor(.white)
                                     .font(.headline)
+                            }
+                        }
+                        
+                        // Error overlay
+                        if showingError {
+                            Color.red.opacity(0.9)
+                                .ignoresSafeArea()
+                            
+                            VStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.white)
+                                
+                                Text("Sync Failed")
+                                    .foregroundColor(.white)
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                
+                                if let error = syncError {
+                                    Text(error)
+                                        .foregroundColor(.white)
+                                        .font(.body)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
+                                }
+                                
+                                Text("Continuing in 1 second...")
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.caption)
                             }
                         }
                     }
@@ -385,6 +429,7 @@ struct CreditExtractorWebView: UIViewRepresentable {
     @Binding var hasAttemptedSync: Bool
     @Binding var isLoading: Bool
     let onSyncStarted: () -> Void
+    let onError: ((String) -> Void)?
     
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -452,10 +497,11 @@ struct CreditExtractorWebView: UIViewRepresentable {
                         '[data-testid="credit-balance"]',
                         '[class*="balance"]',
                         '[class*="credit"]',
-                        'div:contains("Credit balance")',
-                        'div:contains("Available balance")',
-                        'span:contains("$")',
-                        '[class*="billing"]'
+                        '[class*="billing"]',
+                        'div[class*="balance"]',
+                        'span[class*="balance"]',
+                        'div[class*="credit"]',
+                        'span[class*="credit"]'
                     ];
                     
                     for (let selector of selectors) {
@@ -471,14 +517,17 @@ struct CreditExtractorWebView: UIViewRepresentable {
                         }
                     }
                     
-                    // Fallback: look for any element containing dollar amounts
-                    const allElements = document.querySelectorAll('*');
+                    // Fallback: look for any element containing dollar amounts with balance/credit context
+                    const allElements = document.querySelectorAll('div, span, p, td, th');
                     for (let element of allElements) {
                         const text = element.textContent || element.innerText;
-                        if (text && text.includes('$') && (text.toLowerCase().includes('balance') || text.toLowerCase().includes('credit'))) {
-                            const match = text.match(/\\$([0-9]+\\.?[0-9]*)/);
-                            if (match) {
-                                return parseFloat(match[1]);
+                        if (text && text.includes('$')) {
+                            const lowerText = text.toLowerCase();
+                            if (lowerText.includes('balance') || lowerText.includes('credit') || lowerText.includes('available')) {
+                                const match = text.match(/\\$([0-9,]+\\.?[0-9]*)/);
+                                if (match) {
+                                    return parseFloat(match[1].replace(',', ''));
+                                }
                             }
                         }
                     }
@@ -495,10 +544,13 @@ struct CreditExtractorWebView: UIViewRepresentable {
                     const selectors = [
                         '[class*="balance"]',
                         '[class*="credit"]',
-                        'div:contains("API Credits")',
-                        'div:contains("Available Credits")',
-                        'span:contains("$")',
-                        '[class*="billing"]'
+                        '[class*="billing"]',
+                        'div[class*="balance"]',
+                        'span[class*="balance"]',
+                        'div[class*="credit"]',
+                        'span[class*="credit"]',
+                        '[data-testid*="credit"]',
+                        '[data-testid*="balance"]'
                     ];
                     
                     for (let selector of selectors) {
@@ -525,11 +577,23 @@ struct CreditExtractorWebView: UIViewRepresentable {
                 DispatchQueue.main.async {
                     if let error = error {
                         print("❌ JavaScript execution error: \(error)")
+                        // Try alternative extraction immediately on selector errors
+                        self.tryAlternativeExtraction(from: webView)
+                        return
                     }
                     
-                    if let credits = result as? Double {
+                    if let credits = result as? Double, credits > 0 {
                         print("✅ Successfully extracted credits: $\(credits)")
                         self.parent.onCreditsFound(credits)
+                    } else if let credits = result as? NSNumber {
+                        let creditsDouble = credits.doubleValue
+                        if creditsDouble > 0 {
+                            print("✅ Successfully extracted credits (NSNumber): $\(creditsDouble)")
+                            self.parent.onCreditsFound(creditsDouble)
+                        } else {
+                            print("⚠️ No valid credits found. Result: \(String(describing: result))")
+                            self.tryAlternativeExtraction(from: webView)
+                        }
                     } else {
                         print("⚠️ No credits found. Result: \(String(describing: result))")
                         // Try a more aggressive extraction approach
@@ -574,8 +638,10 @@ struct CreditExtractorWebView: UIViewRepresentable {
                         console.log('Parsed amounts:', amounts);
                         
                         if (amounts.length > 0) {
-                            // Return the largest amount found
-                            return Math.max(...amounts);
+                            // Return the largest amount found, but ensure it's a reasonable credit amount
+                            let maxAmount = Math.max(...amounts);
+                            // Only return amounts that seem reasonable for API credits (between $0.01 and $10000)
+                            return (maxAmount >= 0.01 && maxAmount <= 10000) ? maxAmount : null;
                         }
                     }
                     
@@ -625,7 +691,9 @@ struct CreditExtractorWebView: UIViewRepresentable {
                         console.log('Parsed amounts:', amounts);
                         
                         if (amounts.length > 0) {
-                            return Math.max(...amounts);
+                            // Return the largest reasonable amount found
+                            let maxAmount = Math.max(...amounts);
+                            return (maxAmount >= 0.01 && maxAmount <= 10000) ? maxAmount : null;
                         }
                     }
                     
@@ -640,16 +708,31 @@ struct CreditExtractorWebView: UIViewRepresentable {
                 DispatchQueue.main.async {
                     if let error = error {
                         print("❌ Alternative extraction error: \(error)")
+                        let errorMessage = "Failed to extract \(self.parent.provider) credits: \(error.localizedDescription)"
+                        self.parent.onError?(errorMessage)
+                        return
                     }
                     
-                    if let credits = result as? Double {
+                    if let credits = result as? Double, credits > 0 {
                         print("✅ Alternative extraction successful: $\(credits)")
                         self.parent.onCreditsFound(credits)
+                    } else if let credits = result as? NSNumber {
+                        let creditsDouble = credits.doubleValue
+                        if creditsDouble > 0 {
+                            print("✅ Alternative extraction successful (NSNumber): $\(creditsDouble)")
+                            self.parent.onCreditsFound(creditsDouble)
+                        } else {
+                            print("❌ Alternative extraction failed - invalid amount: \(creditsDouble)")
+                            let errorMessage = "Unable to extract valid \(self.parent.provider) credits from the billing page."
+                            self.parent.onError?(errorMessage)
+                        }
                     } else {
                         print("❌ Alternative extraction failed. Final result: \(String(describing: result))")
-                        // Set a test value for debugging
-                        print("🧪 Setting test value for debugging")
-                        self.parent.onCreditsFound(42.50) // Test value
+                        print("⚠️ Credit extraction failed - no valid credits found")
+                        
+                        // Call error callback with descriptive message
+                        let errorMessage = "Unable to extract \(self.parent.provider) credits from the billing page. This may happen if the page structure has changed or if you're not logged in."
+                        self.parent.onError?(errorMessage)
                     }
                 }
             }

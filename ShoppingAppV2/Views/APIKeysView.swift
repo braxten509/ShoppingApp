@@ -319,7 +319,10 @@ struct APIKeysView: View {
                     settingsService.updateOpenAICredits(credits)
                     print("✅ OpenAI credits updated. New value: \(settingsService.formatCredits(settingsService.openAICredits))")
                 },
-                onCompleted: onOpenAISyncComplete
+                onCompleted: onOpenAISyncComplete,
+                onError: { error in
+                    print("❌ OpenAI credit sync error: \(error)")
+                }
             )
         }
         .sheet(isPresented: $showingPerplexityCreditSync) {
@@ -332,7 +335,10 @@ struct APIKeysView: View {
                     settingsService.updatePerplexityCredits(credits)
                     print("✅ Perplexity credits updated. New value: \(settingsService.formatCredits(settingsService.perplexityCredits))")
                 },
-                onCompleted: onPerplexitySyncComplete
+                onCompleted: onPerplexitySyncComplete,
+                onError: { error in
+                    print("❌ Perplexity credit sync error: \(error)")
+                }
             )
         }
     }

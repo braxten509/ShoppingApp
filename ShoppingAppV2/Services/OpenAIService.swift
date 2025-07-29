@@ -159,7 +159,8 @@ class OpenAIService: ObservableObject {
                     "content": prompt
                 ]
             ],
-            "max_tokens": 100
+            "max_tokens": 100,
+            "temperature": 0.0  // Ensures deterministic output
         ]
         
         var request = URLRequest(url: URL(string: baseURL)!)

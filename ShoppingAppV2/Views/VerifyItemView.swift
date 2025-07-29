@@ -138,13 +138,13 @@ struct VerifyItemView: View {
                                     Text("Search Price List")
                                 }
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(name.isEmpty || !customPriceListStore.hasLists ? .gray : .white)
+                                .foregroundColor(isCustomPriceSearchDisabled ? .gray : .white)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .background(name.isEmpty || !customPriceListStore.hasLists ? Color.gray.opacity(0.3) : Color.orange)
+                                .background(isCustomPriceSearchDisabled ? Color.gray.opacity(0.3) : Color.orange)
                                 .cornerRadius(8)
                             }
-                            .disabled(name.isEmpty || !customPriceListStore.hasLists)
+                            .disabled(isCustomPriceSearchDisabled)
                             .buttonStyle(PlainButtonStyle())
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -355,19 +355,28 @@ struct VerifyItemView: View {
                 )
             }
             .sheet(isPresented: $showingCustomPriceSearch) {
-                CustomPriceSearchView(customPriceListStore: customPriceListStore) { item, list in
-                    costString = String(format: "%.2f", item.price)
-                    if name.isEmpty {
-                        name = item.name
-                    }
-                    
-                    // Update analysis issues
-                    dynamicAnalysisIssues.removeAll { $0.contains("custom price") }
-                    let issueText = "Custom price selected - \(item.name) at $\(String(format: "%.2f", item.price)) from \(list.name)"
-                    dynamicAnalysisIssues.append(issueText)
-                    
-                    showingCustomPriceSearch = false
-                }
+                let _ = print("🔍 VerifyItemView: Opening CustomPriceSearch - selectedStore: \(selectedStore?.name ?? "None"), always searching ALL lists")
+                
+                CustomPriceSearchView(
+                    customPriceListStore: customPriceListStore,
+                    onItemSelected: { item, list in
+                        costString = String(format: "%.2f", item.price)
+                        // Use the new setting to determine whether to replace the item name
+                        if name.isEmpty || settingsService.replaceItemNameFromPriceList {
+                            name = item.name
+                        }
+                        
+                        // Update analysis issues
+                        dynamicAnalysisIssues.removeAll { $0.contains("custom price") }
+                        let issueText = "Custom price selected - \(item.name) at $\(String(format: "%.2f", item.price)) from \(list.name)"
+                        dynamicAnalysisIssues.append(issueText)
+                        
+                        showingCustomPriceSearch = false
+                    },
+                    initialSearchText: name,
+                    searchAllLists: true, // Always search all lists in manual/photo add context
+                    selectedListId: nil
+                )
             }
             .onChange(of: webViewSelectedPrice) { price in
                 if let price = price {
@@ -558,9 +567,18 @@ struct VerifyItemView: View {
         UIApplication.shared.open(url)
     }
     
-    @ViewBuilder
+    private var isCustomPriceSearchDisabled: Bool {
+        // Allow search when setting is enabled even if name is empty, otherwise require name
+        if settingsService.replaceItemNameFromPriceList {
+            return !customPriceListStore.hasLists
+        } else {
+            return name.isEmpty || !customPriceListStore.hasLists
+        }
+    }
+    
     private var taxModeView: some View {
-        if taxMode == .customValue {
+        Group {
+            if taxMode == .customValue {
             HStack {
                 TextField("0.00", text: $customTaxRateString)
                     .keyboardType(.decimalPad)
@@ -620,6 +638,7 @@ struct VerifyItemView: View {
                         .font(.caption)
                 }
             }
+        }
         }
     }
 }

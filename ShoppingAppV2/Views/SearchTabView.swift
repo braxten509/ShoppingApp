@@ -63,8 +63,17 @@ struct SearchTabView: View {
     @State private var selectItemsMode = false
     @State private var showingPriceSearchWebView = false
     @State private var showingAddItem = false
+    @State private var showingCustomListSearch = false
+    @State private var searchMode: SearchMode = .store
+    @State private var selectedListId: UUID?
+    @State private var searchAllLists = true
     @StateObject private var prefillManager = PrefillDataManager()
     @FocusState private var isTextFieldFocused: Bool
+    
+    enum SearchMode: String, CaseIterable {
+        case store = "Store Search"
+        case list = "List Search"
+    }
     
     var body: some View {
         NavigationView {
@@ -130,6 +139,26 @@ struct SearchTabView: View {
                     )
                 }
             }
+            .sheet(isPresented: $showingCustomListSearch) {
+                CustomPriceSearchView(
+                    customPriceListStore: customPriceListStore,
+                    onItemSelected: { item, list in
+                        // Set prefill data with the selected item from the list
+                        prefillManager.setPrefillData(name: item.name, price: item.price)
+                        
+                        // Close the list search and open add item
+                        showingCustomListSearch = false
+                        
+                        // Delay opening the new sheet to ensure clean transition
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showingAddItem = true
+                        }
+                    },
+                    initialSearchText: itemName,
+                    searchAllLists: searchAllLists,
+                    selectedListId: searchAllLists ? nil : selectedListId
+                )
+            }
             .onAppear {
                 print("🔍 SearchTabView onAppear: selectedWebsite = '\(selectedWebsite)', stores count = \(settingsService.stores.count)")
                 
@@ -189,6 +218,25 @@ struct SearchTabView: View {
                     print("🔍 SearchTabView: prefillItemName is empty, no action taken")
                 }
             }
+            .onChange(of: selectedListId) { _, newValue in
+                // When a specific list is selected, automatically set searchAllLists to false
+                if newValue != nil && searchAllLists {
+                    print("🔍 SearchTabView: selectedListId changed to specific list, setting searchAllLists to false")
+                    searchAllLists = false
+                }
+            }
+            .onChange(of: searchAllLists) { _, newValue in
+                // When switching to "Specific List" mode, select the default list if none is selected
+                if !newValue && selectedListId == nil {
+                    if let defaultList = customPriceListStore.getDefaultList() {
+                        print("🔍 SearchTabView: Switched to specific list mode, selecting default list '\(defaultList.name)'")
+                        selectedListId = defaultList.id
+                    } else if let firstList = customPriceListStore.customPriceLists.first {
+                        print("🔍 SearchTabView: Switched to specific list mode, selecting first list '\(firstList.name)'")
+                        selectedListId = firstList.id
+                    }
+                }
+            }
         }
     }
     
@@ -198,7 +246,7 @@ struct SearchTabView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Search for items across different stores. Enable 'Select Items?' to browse and manually add prices using the floating button.")
+            Text(searchMode == .store ? "Search for items across different stores. Enable 'Select Items?' to browse and manually add prices using the floating button." : "Search for items in your custom price lists. Find items you've previously saved with their prices.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.leading)
@@ -210,6 +258,24 @@ struct SearchTabView: View {
     
     private var formFieldsView: some View {
         Group {
+            // Search Mode Picker
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Search Mode")
+                    .font(.headline)
+                
+                Picker("Search Mode", selection: $searchMode) {
+                    ForEach(SearchMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+            .padding(.horizontal)
+            
             VStack(alignment: .leading, spacing: 8) {
                 Text("Item Name")
                     .font(.headline)
@@ -224,78 +290,177 @@ struct SearchTabView: View {
             .cornerRadius(12)
             .padding(.horizontal)
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Specification (Optional)")
-                    .font(.headline)
-                
-                TextField("Enter specifications", text: $priceSearchSpecification)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .focused($isTextFieldFocused)
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-            .padding(.horizontal)
-            
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Select Store")
+            // Store search specific fields
+            if searchMode == .store {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Specification (Optional)")
                         .font(.headline)
                     
-                    Spacer()
-                    
-                    Picker("Store", selection: $selectedWebsite) {
-                        ForEach(settingsService.stores, id: \.id) { store in
-                            Text(store.name).tag(store.name)
+                    TextField("Enter specifications", text: $priceSearchSpecification)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .focused($isTextFieldFocused)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Select Store")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        Picker("Store", selection: $selectedWebsite) {
+                            ForEach(settingsService.stores, id: \.id) { store in
+                                Text(store.name).tag(store.name)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
+            }
+            
+            // List search specific fields
+            if searchMode == .list {
+                if !customPriceListStore.hasLists {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No Custom Price Lists")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        
+                        Text("You don't have any custom price lists yet. Create one in Settings > Custom Price Lists to use this search mode.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Search In")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        Picker("Search Scope", selection: $searchAllLists) {
+                            Text("All Lists").tag(true)
+                            Text("Specific List").tag(false)
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
+                
+                if !searchAllLists {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Select List")
+                                .font(.headline)
+                            
+                            Spacer()
+                            
+                            Picker("List", selection: $selectedListId) {
+                                ForEach(customPriceListStore.customPriceLists, id: \.id) { list in
+                                    Text(list.name).tag(Optional(list.id))
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
                         }
                     }
-                    .pickerStyle(MenuPickerStyle())
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                }
                 }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-            .padding(.horizontal)
         }
     }
     
     private var controlsView: some View {
         Group {
-            HStack {
-                Text("Select Items?")
-                    .font(.headline)
-                
-                Spacer()
-                
-                Toggle("", isOn: $selectItemsMode)
-                    .labelsHidden()
+            // Show Select Items toggle only for store search
+            if searchMode == .store {
+                HStack {
+                    Text("Select Items?")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    Toggle("", isOn: $selectItemsMode)
+                        .labelsHidden()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-            .padding(.horizontal)
             
             Button(action: {
-                print("🔍 SearchTabView: Search button tapped - selectedWebsite='\(selectedWebsite)', selectItemsMode=\(selectItemsMode)")
+                print("🔍 SearchTabView: Search button tapped - searchMode=\(searchMode), selectedWebsite='\(selectedWebsite)', selectItemsMode=\(selectItemsMode)")
                 isTextFieldFocused = false
-                showingPriceSearchWebView = true
+                
+                if searchMode == .store {
+                    showingPriceSearchWebView = true
+                } else {
+                    showingCustomListSearch = true
+                }
             }) {
                 HStack {
                     Image(systemName: "magnifyingglass")
-                    Text("Search Price")
+                    Text(searchMode == .store ? "Search Price" : "Search Lists")
                 }
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(itemName.isEmpty || selectedWebsite.isEmpty ? Color.gray : Color.purple)
+                .background(searchButtonBackgroundColor)
                 .cornerRadius(12)
             }
-            .disabled(itemName.isEmpty || selectedWebsite.isEmpty)
+            .disabled(searchButtonDisabled)
             .padding(.horizontal)
+        }
+    }
+    
+    private var searchButtonBackgroundColor: Color {
+        if searchButtonDisabled {
+            return Color.gray
+        }
+        return searchMode == .store ? Color.purple : Color.orange
+    }
+    
+    private var searchButtonDisabled: Bool {
+        if itemName.isEmpty {
+            return true
+        }
+        
+        if searchMode == .store {
+            return selectedWebsite.isEmpty
+        } else {
+            if !customPriceListStore.hasLists {
+                return true
+            }
+            // When selectedListId is nil, we should always search all lists (that's the "None"/default option)
+            // This is always valid as long as we have lists
+            return false
         }
     }
 }

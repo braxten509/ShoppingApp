@@ -5,9 +5,19 @@ struct CustomPriceSearchView: View {
     let onItemSelected: (CustomPriceItem, CustomPriceList) -> Void
     @Environment(\.dismiss) private var dismiss
     
-    @State private var searchText = ""
+    @State private var searchText: String
     @State private var selectedListId: UUID?
-    @State private var showingAllLists = true
+    @State private var showingAllLists: Bool
+    
+    init(customPriceListStore: CustomPriceListStore, onItemSelected: @escaping (CustomPriceItem, CustomPriceList) -> Void, initialSearchText: String = "", searchAllLists: Bool = true, selectedListId: UUID? = nil) {
+        self.customPriceListStore = customPriceListStore
+        self.onItemSelected = onItemSelected
+        self._searchText = State(initialValue: initialSearchText)
+        self._showingAllLists = State(initialValue: searchAllLists)
+        self._selectedListId = State(initialValue: selectedListId)
+        
+        print("🔍 CustomPriceSearchView init: searchAllLists=\(searchAllLists), selectedListId=\(selectedListId?.uuidString ?? "nil")")
+    }
     
     private var filteredResults: [(list: CustomPriceList, items: [CustomPriceItem])] {
         if searchText.isEmpty {
@@ -83,8 +93,11 @@ struct CustomPriceSearchView: View {
                                 }
                             }
                         } label: {
+                            let displayText = showingAllLists ? "All Lists" : (customPriceListStore.getList(by: selectedListId ?? UUID())?.name ?? "Select List")
+                            let _ = print("🔍 CustomPriceSearchView Menu label: showingAllLists=\(showingAllLists), selectedListId=\(selectedListId?.uuidString ?? "nil"), displayText='\(displayText)'")
+                            
                             HStack {
-                                Text(showingAllLists ? "All Lists" : (customPriceListStore.getList(by: selectedListId ?? UUID())?.name ?? "Select List"))
+                                Text(displayText)
                                     .foregroundColor(.blue)
                                 Image(systemName: "chevron.down")
                                     .foregroundColor(.blue)
@@ -174,10 +187,17 @@ struct CustomPriceSearchView: View {
             }
         }
         .onAppear {
-            // Set default list if available
-            if let defaultList = customPriceListStore.getDefaultList() {
-                selectedListId = defaultList.id
-                showingAllLists = false
+            // Only set default list if not explicitly initialized to search all lists
+            if showingAllLists {
+                print("🔍 CustomPriceSearchView onAppear: Keeping searchAllLists=true as requested")
+                // Don't override - keep the initialization parameters
+            } else if selectedListId == nil {
+                // Only set default list if no specific list was selected and we're not searching all
+                if let defaultList = customPriceListStore.getDefaultList() {
+                    print("🔍 CustomPriceSearchView onAppear: Setting default list \(defaultList.name)")
+                    selectedListId = defaultList.id
+                    showingAllLists = false
+                }
             }
         }
     }

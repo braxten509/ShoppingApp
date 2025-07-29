@@ -271,6 +271,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var location: CLLocation?
     @Published var placemark: CLPlacemark?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    @Published var isLoadingLocation: Bool = false
+    @Published var hasLocationFailed: Bool = false
+    
+    private var locationTimer: Timer?
     
     override init() {
         super.init()
@@ -279,6 +283,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func requestLocation() {
+        isLoadingLocation = true
+        hasLocationFailed = false
+        
+        // Start 30-second timeout timer
+        locationTimer?.invalidate()
+        locationTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.isLoadingLocation = false
+                self?.hasLocationFailed = true
+            }
+        }
+        
         locationManager.requestLocation()
     }
     
@@ -288,9 +304,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         let geocoder = CLGeocoder()
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            if let placemark = placemarks?.first {
-                DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                self?.locationTimer?.invalidate()
+                self?.isLoadingLocation = false
+                
+                if let placemark = placemarks?.first {
                     self?.placemark = placemark
+                    self?.hasLocationFailed = false
+                } else {
+                    self?.hasLocationFailed = true
                 }
             }
         }
@@ -298,6 +320,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location error: \(error.localizedDescription)")
+        DispatchQueue.main.async {
+            self.locationTimer?.invalidate()
+            self.isLoadingLocation = false
+            self.hasLocationFailed = true
+        }
     }
     
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {

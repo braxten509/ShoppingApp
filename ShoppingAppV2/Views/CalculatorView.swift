@@ -30,8 +30,26 @@ struct CalculatorView: View {
     @State private var showingSettings = false
     @State private var showingError = false
     @State private var errorMessage = ""
-    @State private var selectedStore: Store?
-    @State private var selectedCustomPriceList: CustomPriceList?
+    @State private var showingLocationRetry = false
+    @State private var showingLocationSync = false
+    @State private var selectedStore: Store? {
+        didSet {
+            if let store = selectedStore {
+                UserDefaults.standard.set(store.id.uuidString, forKey: "calculatorView_selectedStoreId")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "calculatorView_selectedStoreId")
+            }
+        }
+    }
+    @State private var selectedCustomPriceList: CustomPriceList? {
+        didSet {
+            if let list = selectedCustomPriceList {
+                UserDefaults.standard.set(list.id.uuidString, forKey: "calculatorView_selectedCustomPriceListId")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "calculatorView_selectedCustomPriceListId")
+            }
+        }
+    }
     
     var body: some View {
         let _ = print("🔄 CalculatorView.body computed - Store: \(selectedStore?.name ?? "nil"), CustomList: \(selectedCustomPriceList?.name ?? "nil")")
@@ -79,6 +97,22 @@ struct CalculatorView: View {
                 Button("OK") { }
             } message: {
                 Text(errorMessage)
+            }
+            .alert("Retry Location", isPresented: $showingLocationRetry) {
+                Button("Cancel", role: .cancel) { }
+                Button("Retry") {
+                    locationManager.requestLocation()
+                }
+            } message: {
+                Text("Would you like to retry finding your location?")
+            }
+            .alert("Sync Location", isPresented: $showingLocationSync) {
+                Button("Cancel", role: .cancel) { }
+                Button("Sync") {
+                    locationManager.requestLocation()
+                }
+            } message: {
+                Text("Sync?")
             }
             .sheet(isPresented: $showingCamera) {
                 CameraView(selectedImage: $selectedImage)
@@ -136,21 +170,46 @@ struct CalculatorView: View {
         VStack(spacing: 4) {
             HStack {
                 // Location section
-                if settingsService.locationAccessEnabled, let placemark = locationManager.placemark {
-                    HStack {
-                        Image(systemName: "location.fill")
-                            .foregroundColor(.blue)
-                        VStack(alignment: .leading, spacing: 2) {
-                            if let city = placemark.locality, let state = placemark.administrativeArea {
-                                Text("\(city), \(state)")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
+                if settingsService.locationAccessEnabled {
+                    if locationManager.isLoadingLocation {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("Finding location...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else if locationManager.hasLocationFailed {
+                        HStack {
+                            Image(systemName: "location.slash")
+                                .foregroundColor(.red)
+                            Text("Unable to find location")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .onTapGesture {
+                            showingLocationRetry = true
+                        }
+                    } else if let placemark = locationManager.placemark {
+                        HStack {
+                            Image(systemName: "location.fill")
+                                .foregroundColor(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                if let city = placemark.locality, let state = placemark.administrativeArea {
+                                    Text("\(city), \(state)")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                if let county = placemark.subAdministrativeArea {
+                                    let countyText = county.hasSuffix("County") ? county : "\(county) County"
+                                    Text(countyText)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
                             }
-                            if let county = placemark.subAdministrativeArea {
-                                Text("\(county) County")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
+                        }
+                        .onTapGesture {
+                            showingLocationSync = true
                         }
                     }
                 }
@@ -255,18 +314,46 @@ struct CalculatorView: View {
         .onAppear {
             print("🔄 CalculatorView.onAppear - Store: \(selectedStore?.name ?? "nil"), CustomList: \(selectedCustomPriceList?.name ?? "nil")")
             
-            // Auto-select default store if not already selected (only once)
+            // Load saved selections from UserDefaults (default to None)
             if selectedStore == nil {
-                let defaultStore = settingsService.getDefaultStore()
-                print("🔄 Setting selectedStore to: \(defaultStore?.name ?? "nil")")
-                selectedStore = defaultStore
+                if let savedStoreId = UserDefaults.standard.string(forKey: "calculatorView_selectedStoreId"),
+                   let uuid = UUID(uuidString: savedStoreId),
+                   let store = settingsService.stores.first(where: { $0.id == uuid }) {
+                    print("🔄 Loading saved selectedStore: \(store.name)")
+                    selectedStore = store
+                } else {
+                    print("🔄 No saved store found - defaulting to None")
+                    selectedStore = nil
+                }
             }
             
-            // Auto-select default custom price list if not already selected (only once)  
+            // Load saved custom price list selection (default to None)
             if selectedCustomPriceList == nil {
-                let defaultList = customPriceListStore.getDefaultList()
-                print("🔄 Setting selectedCustomPriceList to: \(defaultList?.name ?? "nil")")
-                selectedCustomPriceList = defaultList
+                if let savedListId = UserDefaults.standard.string(forKey: "calculatorView_selectedCustomPriceListId"),
+                   let uuid = UUID(uuidString: savedListId),
+                   let list = customPriceListStore.customPriceLists.first(where: { $0.id == uuid }) {
+                    print("🔄 Loading saved selectedCustomPriceList: \(list.name)")
+                    selectedCustomPriceList = list
+                } else {
+                    print("🔄 No saved custom price list found - defaulting to None")
+                    selectedCustomPriceList = nil
+                }
+            }
+        }
+        .onChange(of: settingsService.stores) { _, _ in
+            // Check if currently selected store still exists
+            if let currentStore = selectedStore,
+               !settingsService.stores.contains(where: { $0.id == currentStore.id }) {
+                print("🔄 Selected store was deleted - resetting to None")
+                selectedStore = nil
+            }
+        }
+        .onChange(of: customPriceListStore.customPriceLists) { _, _ in
+            // Check if currently selected custom price list still exists
+            if let currentList = selectedCustomPriceList,
+               !customPriceListStore.customPriceLists.contains(where: { $0.id == currentList.id }) {
+                print("🔄 Selected custom price list was deleted - resetting to None")
+                selectedCustomPriceList = nil
             }
         }
     }
@@ -493,7 +580,8 @@ struct CalculatorView: View {
                 components.append(locality)
             }
             if let county = placemark.subAdministrativeArea {
-                components.append("\(county) County")
+                let countyText = county.hasSuffix("County") ? county : "\(county) County"
+                components.append(countyText)
             }
             if let state = placemark.administrativeArea {
                 components.append(state)

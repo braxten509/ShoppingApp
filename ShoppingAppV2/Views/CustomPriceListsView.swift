@@ -64,6 +64,24 @@ struct CustomPriceListsView: View {
                 }
             }
             
+            Section(header: Text("Search Settings")) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Replace Item Name from Price List")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        Text("Replace current item name when selecting from price lists")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    
+                    Spacer()
+                    
+                    Toggle("", isOn: $settingsService.replaceItemNameFromPriceList)
+                        .labelsHidden()
+                }
+            }
+            
             Section {
                 Button(action: {
                     showingAddList = true
@@ -159,6 +177,10 @@ struct CustomPriceListRowView: View {
                             .foregroundColor(.gray)
                     }
                 }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onEdit()
             }
             
             if isExpanded {

@@ -36,6 +36,12 @@ class CustomPriceListStore: ObservableObject {
             defaultCustomPriceListId = nil
         }
         
+        // Clear CalculatorView's selected custom price list if it matches the deleted one
+        if let savedListId = UserDefaults.standard.string(forKey: "calculatorView_selectedCustomPriceListId"),
+           removedList.id.uuidString == savedListId {
+            UserDefaults.standard.removeObject(forKey: "calculatorView_selectedCustomPriceListId")
+        }
+        
         customPriceLists.remove(at: index)
     }
     

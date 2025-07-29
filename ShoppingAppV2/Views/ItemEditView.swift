@@ -387,7 +387,8 @@ struct ItemEditView: View {
                 components.append(locality)
             }
             if let county = placemark.subAdministrativeArea {
-                components.append("\(county) County")
+                let countyText = county.hasSuffix("County") ? county : "\(county) County"
+                components.append(countyText)
             }
             if let state = placemark.administrativeArea {
                 components.append(state)

@@ -130,6 +130,12 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var replaceItemNameFromPriceList: Bool {
+        didSet {
+            UserDefaults.standard.set(replaceItemNameFromPriceList, forKey: "replaceItemNameFromPriceList")
+        }
+    }
+    
     // Credit tracking
     @Published var openAICredits: Double {
         didSet {
@@ -208,6 +214,12 @@ class SettingsService: ObservableObject {
             UserDefaults.standard.set(true, forKey: "customPriceListsEnabled")
         }
         self.customPriceListsEnabled = UserDefaults.standard.bool(forKey: "customPriceListsEnabled")
+        
+        // Initialize replace item name from price list setting (default false to preserve existing behavior)
+        if UserDefaults.standard.object(forKey: "replaceItemNameFromPriceList") == nil {
+            UserDefaults.standard.set(false, forKey: "replaceItemNameFromPriceList")
+        }
+        self.replaceItemNameFromPriceList = UserDefaults.standard.bool(forKey: "replaceItemNameFromPriceList")
         
         self.stores = []
         loadStores()
@@ -291,6 +303,15 @@ class SettingsService: ObservableObject {
     }
     
     func deleteStore(at index: Int) {
+        guard index < stores.count else { return }
+        let deletedStore = stores[index]
+        
+        // Clear CalculatorView's selected store if it matches the deleted one
+        if let savedStoreId = UserDefaults.standard.string(forKey: "calculatorView_selectedStoreId"),
+           deletedStore.id.uuidString == savedStoreId {
+            UserDefaults.standard.removeObject(forKey: "calculatorView_selectedStoreId")
+        }
+        
         stores.remove(at: index)
     }
     
@@ -300,6 +321,9 @@ class SettingsService: ObservableObject {
     }
     
     func resetToDefaultStores() {
+        // Clear CalculatorView's selected store since we're resetting to defaults
+        UserDefaults.standard.removeObject(forKey: "calculatorView_selectedStoreId")
+        
         stores = Store.defaultStores
     }
     

@@ -136,6 +136,15 @@ class SettingsService: ObservableObject {
         }
     }
     
+    // Tax rate caching for consistency
+    @Published var cachedTaxRates: [String: Double] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(cachedTaxRates) {
+                UserDefaults.standard.set(encoded, forKey: "cachedTaxRates")
+            }
+        }
+    }
+    
     // Credit tracking
     @Published var openAICredits: Double {
         didSet {
@@ -221,6 +230,14 @@ class SettingsService: ObservableObject {
         }
         self.replaceItemNameFromPriceList = UserDefaults.standard.bool(forKey: "replaceItemNameFromPriceList")
         
+        // Initialize cached tax rates
+        if let data = UserDefaults.standard.data(forKey: "cachedTaxRates"),
+           let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
+            self.cachedTaxRates = decoded
+        } else {
+            self.cachedTaxRates = [:]
+        }
+        
         self.stores = []
         loadStores()
         
@@ -243,31 +260,57 @@ class SettingsService: ObservableObject {
     func getTaxRatePrompt(itemName: String, location: String?) -> String {
         if let location = location {
             return """
-            What is the current sales tax rate for purchasing \(itemName) in \(location)? 
+            What is the current sales tax rate for purchasing \(itemName) in \(location)?
             
-            Consider:
-            - State sales tax
-            - Local sales tax
-            - Combined total rate
-            - Any special categories for this item type
+            CRITICAL: You must determine the correct tax category for this item:
+            
+            FOOD/GROCERY ITEMS (fruits, vegetables, meat, dairy, bread, unprepared food, etc.):
+            - Many jurisdictions have reduced or zero tax rates for grocery food items
+            - Look up the specific grocery/food tax rate for this exact location
+            - This often differs significantly from general merchandise tax rates
+            
+            NON-FOOD ITEMS (electronics, clothing, household goods, etc.):
+            - Subject to full combined sales tax rate
+            - Includes all applicable state, local, and special district taxes
+            
+            PREPARED FOOD (restaurant meals, hot prepared food, etc.):
+            - Usually taxed at full rate even if food-related
+            - Different from unprepared grocery items
+            
+            Research the exact current tax rate for this specific item category in this specific location.
+            Be very precise - grocery items often have significantly different rates than general merchandise.
             
             Respond with ONLY a JSON object in this exact format:
             {"taxRate": X.X}
             
-            Where X.X is the total combined tax percentage as a decimal number (e.g., 6.0 for 6%, 8.25 for 8.25%).
+            Where X.X is the total combined tax percentage as a decimal number (e.g., 3.0 for 3%, 8.25 for 8.25%).
             Do not include any other text, explanations, or formatting.
             """
         } else {
             return """
-            What is the typical sales tax rate for purchasing \(itemName) in the United States?
+            What is the typical sales tax rate for purchasing \(itemName) without a specific location?
             
-            Provide the most common sales tax rate range for this type of item.
-            If uncertain, use a reasonable estimate based on average US sales tax rates (typically 6-8%).
+            CRITICAL: You must determine the correct tax category for this item:
+            
+            FOOD/GROCERY ITEMS (fruits, vegetables, meat, dairy, bread, unprepared food, etc.):
+            - Many jurisdictions have reduced or zero tax rates for grocery food items
+            - Provide a reasonable estimate based on common grocery tax rates
+            - This is often much lower than general merchandise rates
+            
+            NON-FOOD ITEMS (electronics, clothing, household goods, etc.):
+            - Subject to typical combined sales tax rates
+            - Provide a reasonable average rate for general merchandise
+            
+            PREPARED FOOD (restaurant meals, hot prepared food, etc.):
+            - Usually taxed at full rate even if food-related
+            - Different from unprepared grocery items
+            
+            Provide a reasonable estimate based on the item category.
             
             Respond with ONLY a JSON object in this exact format:
             {"taxRate": X.X}
             
-            Where X.X is the tax percentage as a decimal number (e.g., 6.0 for 6%, 7.5 for 7.5%).
+            Where X.X is the tax percentage as a decimal number (e.g., 3.0 for 3%, 7.0 for 7%).
             Do not include any other text, explanations, or formatting.
             """
         }

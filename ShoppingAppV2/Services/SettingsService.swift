@@ -92,6 +92,12 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var useItemSpecificTax: Bool {
+        didSet {
+            UserDefaults.standard.set(useItemSpecificTax, forKey: "useItemSpecificTax")
+        }
+    }
+    
     @Published var manualTaxRate: Double {
         didSet {
             UserDefaults.standard.set(manualTaxRate, forKey: "manualTaxRate")
@@ -192,6 +198,18 @@ class SettingsService: ObservableObject {
         }
     }
     
+    @Published var savedTestResults: TaxAccuracyResults? {
+        didSet {
+            if let results = savedTestResults {
+                if let encoded = try? JSONEncoder().encode(results) {
+                    UserDefaults.standard.set(encoded, forKey: "savedTestResults")
+                }
+            } else {
+                UserDefaults.standard.removeObject(forKey: "savedTestResults")
+            }
+        }
+    }
+    
 
     let aiModels = [
         // OpenAI Models
@@ -234,6 +252,12 @@ class SettingsService: ObservableObject {
         // Force manual tax rate if location or AI is disabled
         let storedManualTax = UserDefaults.standard.bool(forKey: "useManualTaxRate")
         self.useManualTaxRate = storedManualTax
+        
+        // Initialize item-specific tax setting (default to false for general tax rates)
+        if UserDefaults.standard.object(forKey: "useItemSpecificTax") == nil {
+            UserDefaults.standard.set(false, forKey: "useItemSpecificTax")
+        }
+        self.useItemSpecificTax = UserDefaults.standard.bool(forKey: "useItemSpecificTax")
         // Set a reasonable default tax rate if none exists (6% is a common US average)
         let storedTaxRate = UserDefaults.standard.double(forKey: "manualTaxRate")
         self.manualTaxRate = storedTaxRate > 0 ? storedTaxRate : 6.0
@@ -287,6 +311,14 @@ class SettingsService: ObservableObject {
             self.cachedTaxRates = [:]
         }
         
+        // Initialize saved test results
+        if let data = UserDefaults.standard.data(forKey: "savedTestResults"),
+           let decoded = try? JSONDecoder().decode(TaxAccuracyResults.self, from: data) {
+            self.savedTestResults = decoded
+        } else {
+            self.savedTestResults = nil
+        }
+        
         self.stores = []
         loadStores()
         
@@ -307,14 +339,28 @@ class SettingsService: ObservableObject {
     
     
     func getTaxRatePrompt(itemName: String, location: String?) -> String {
-        if let location = location {
-            return """
-            What is the sales tax for \(itemName) in \(location)? Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX). Please provide the answer at the end of your analysis, and only once.
-            """
+        if useItemSpecificTax {
+            // Item-specific tax detection (current behavior)
+            if let location = location {
+                return """
+                What is the sales tax for \(itemName) in \(location)? Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX). Please provide the answer at the end of your analysis, and only once.
+                """
+            } else {
+                return """
+                What is the typical sales tax for \(itemName)? Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX).
+                """
+            }
         } else {
-            return """
-            What is the typical sales tax for \(itemName)? Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX).
-            """
+            // General state/county tax rates only
+            if let location = location {
+                return """
+                What is the general sales tax rate (state + county/local) in \(location)? Do not consider specific item exemptions. Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX). Please provide the answer at the end of your analysis, and only once.
+                """
+            } else {
+                return """
+                What is the typical general sales tax rate? Do not consider specific item exemptions. Please respond with the answer in this format: XX3.00XX (3% would be XX3.00XX).
+                """
+            }
         }
     }
     

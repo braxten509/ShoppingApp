@@ -283,8 +283,10 @@ struct CalculatorView: View {
                 // Store selection
                 Menu {
                     Button(action: {
-                        print("🏪 Store Menu: Selecting 'None'")
-                        selectedStore = nil
+                        if settingsService.internetAccessEnabled {
+                            print("🏪 Store Menu: Selecting 'None'")
+                            selectedStore = nil
+                        }
                     }) {
                         HStack {
                             Text("None")
@@ -297,8 +299,10 @@ struct CalculatorView: View {
                     
                     ForEach(settingsService.stores, id: \.id) { store in
                         Button(action: {
-                            print("🏪 Store Menu: Selecting '\(store.name)'")
-                            selectedStore = store
+                            if settingsService.internetAccessEnabled {
+                                print("🏪 Store Menu: Selecting '\(store.name)'")
+                                selectedStore = store
+                            }
                         }) {
                             HStack {
                                 Text(store.name)
@@ -313,15 +317,17 @@ struct CalculatorView: View {
                     let _ = print("🏪 Store Menu Label - Current: \(selectedStore?.name ?? "None")")
                     HStack {
                         Image(systemName: "storefront.fill")
-                            .foregroundColor(.purple)
+                            .foregroundColor(settingsService.internetAccessEnabled ? .purple : .secondary)
                         Text(selectedStore?.name ?? "None")
                             .font(.caption)
                             .fontWeight(.medium)
+                            .foregroundColor(settingsService.internetAccessEnabled ? .primary : .secondary)
                         Image(systemName: "chevron.down")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                 }
+                .disabled(!settingsService.internetAccessEnabled)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -369,6 +375,12 @@ struct CalculatorView: View {
                !customPriceListStore.customPriceLists.contains(where: { $0.id == currentList.id }) {
                 print("🔄 Selected custom price list was deleted - resetting to None")
                 selectedCustomPriceList = nil
+            }
+        }
+        .onChange(of: settingsService.internetAccessEnabled) { _, isEnabled in
+            if !isEnabled && selectedStore != nil {
+                print("🔄 Internet access disabled - forcing store to None")
+                selectedStore = nil
             }
         }
     }

@@ -67,6 +67,25 @@ struct SettingsView: View {
                         }
                     }
                     
+                    NavigationLink(destination: TaxSettingsView(settingsService: settingsService)) {
+                        HStack {
+                            Image(systemName: "percent")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Tax")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("Configure tax calculation settings")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            
+                            Spacer()
+                        }
+                    }
+                    
                     NavigationLink(destination: StoreManagementView(settingsService: settingsService)) {
                         HStack {
                             Image(systemName: "storefront")
@@ -146,45 +165,6 @@ struct SettingsView: View {
                     Text("Configuration")
                 }
                 
-                Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Toggle("Use Manual Tax Rate", isOn: $settingsService.useManualTaxRate)
-                            .font(.headline)
-                            .disabled(settingsService.shouldForceManualTax)
-                            .foregroundColor(settingsService.shouldForceManualTax ? .secondary : .primary)
-                        
-                        if settingsService.useManualTaxRate || settingsService.shouldForceManualTax {
-                            HStack {
-                                Text("Tax Rate:")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                
-                                Spacer()
-                                
-                                TextField("0.0", value: $settingsService.manualTaxRate, format: .number)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .frame(width: 80)
-                                    .keyboardType(.decimalPad)
-                                    .keyboardToolbar()
-                                
-                                Text("%")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                } header: {
-                    Text("Tax Settings")
-                } footer: {
-                    if settingsService.shouldForceManualTax {
-                        Text("Manual tax rate is required when Location Access or AI is disabled.")
-                    } else if settingsService.useManualTaxRate {
-                        Text("Manual tax rate will override AI-based tax detection for all items.")
-                    } else {
-                        Text("AI will determine tax rates based on item type and location.")
-                    }
-                }
                 
                 Section {
                     Button(action: {

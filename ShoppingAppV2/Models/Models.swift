@@ -1,6 +1,26 @@
 import Foundation
 import CoreLocation
 
+struct TaxAccuracyResults: Codable {
+    let totalTests: Int
+    let responses: [String]
+    let mostCommonAnswer: String
+    let mostCommonCount: Int
+    let accuracyPercentage: Double
+    let prompt: String
+    let testDate: Date
+    
+    init(totalTests: Int, responses: [String], mostCommonAnswer: String, mostCommonCount: Int, accuracyPercentage: Double, prompt: String) {
+        self.totalTests = totalTests
+        self.responses = responses
+        self.mostCommonAnswer = mostCommonAnswer
+        self.mostCommonCount = mostCommonCount
+        self.accuracyPercentage = accuracyPercentage
+        self.prompt = prompt
+        self.testDate = Date()
+    }
+}
+
 struct Store: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String

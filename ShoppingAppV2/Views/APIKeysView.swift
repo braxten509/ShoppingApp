@@ -19,6 +19,7 @@ struct APIKeysView: View {
     @State private var showingOpenAICreditSync = false
     @State private var showingPerplexityCreditSync = false
     @State private var isSyncing = false
+    @State private var syncCancelled = false
     
     // Manual credit input states
     @State private var showingManualOpenAIInput = false
@@ -54,53 +55,60 @@ struct APIKeysView: View {
                     }
                 }
                 
-                Button(action: {
-                    showingOpenAIKeysWeb = true
-                }) {
-                    HStack {
-                        Image(systemName: "key.fill")
-                            .foregroundColor(.green)
-                        Text("Get API Key from OpenAI")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Image(systemName: "globe")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                
-                Button(action: {
-                    showingOpenAIBillingWeb = true
-                }) {
-                    HStack {
-                        Image(systemName: "creditcard.fill")
-                            .foregroundColor(.orange)
-                        Text("View OpenAI Billing")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Image(systemName: "globe")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                
                 // Credits Display
                 HStack {
-                    VStack(alignment: .leading) {
-                        Text("Credits")
-                        Button("Manual Entry") {
-                            manualCreditInput = ""
-                            showingManualOpenAIInput = true
-                        }
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    }
+                    Text("Credits")
                     Spacer()
                     Text("$\(settingsService.formatCredits(settingsService.openAICredits))")
                         .foregroundColor(settingsService.openAICredits < 0 ? .secondary : .primary)
+                    Button(action: {
+                        manualCreditInput = ""
+                        showingManualOpenAIInput = true
+                    }) {
+                        Image(systemName: "pencil")
+                            .foregroundColor(.blue)
+                            .font(.system(size: 16))
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
+                
+                Button(action: {
+                    if settingsService.internetAccessEnabled {
+                        showingOpenAIKeysWeb = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "key.fill")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .green : .secondary)
+                        Text("Get API Key from OpenAI")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                        Spacer()
+                        Image(systemName: "globe")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!settingsService.internetAccessEnabled)
+                
+                Button(action: {
+                    if settingsService.internetAccessEnabled {
+                        showingOpenAIBillingWeb = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .orange : .secondary)
+                        Text("View OpenAI Billing")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                        Spacer()
+                        Image(systemName: "globe")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!settingsService.internetAccessEnabled)
             } header: {
                 Text("OpenAI Configuration")
             }
@@ -132,53 +140,60 @@ struct APIKeysView: View {
                     }
                 }
                 
-                Button(action: {
-                    showingPerplexityKeysWeb = true
-                }) {
-                    HStack {
-                        Image(systemName: "key.fill")
-                            .foregroundColor(.purple)
-                        Text("Get API Key from Perplexity")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Image(systemName: "globe")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                
-                Button(action: {
-                    showingPerplexityBillingWeb = true
-                }) {
-                    HStack {
-                        Image(systemName: "creditcard.fill")
-                            .foregroundColor(.orange)
-                        Text("View Perplexity Billing")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Image(systemName: "globe")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                
                 // Credits Display
                 HStack {
-                    VStack(alignment: .leading) {
-                        Text("Credits")
-                        Button("Manual Entry") {
-                            manualCreditInput = ""
-                            showingManualPerplexityInput = true
-                        }
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    }
+                    Text("Credits")
                     Spacer()
                     Text("$\(settingsService.formatCredits(settingsService.perplexityCredits))")
                         .foregroundColor(settingsService.perplexityCredits < 0 ? .secondary : .primary)
+                    Button(action: {
+                        manualCreditInput = ""
+                        showingManualPerplexityInput = true
+                    }) {
+                        Image(systemName: "pencil")
+                            .foregroundColor(.blue)
+                            .font(.system(size: 16))
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
+                
+                Button(action: {
+                    if settingsService.internetAccessEnabled {
+                        showingPerplexityKeysWeb = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "key.fill")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .purple : .secondary)
+                        Text("Get API Key from Perplexity")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                        Spacer()
+                        Image(systemName: "globe")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!settingsService.internetAccessEnabled)
+                
+                Button(action: {
+                    if settingsService.internetAccessEnabled {
+                        showingPerplexityBillingWeb = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .orange : .secondary)
+                        Text("View Perplexity Billing")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                        Spacer()
+                        Image(systemName: "globe")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .blue : .secondary)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!settingsService.internetAccessEnabled)
             } header: {
                 Text("Perplexity Configuration")
             }
@@ -210,15 +225,17 @@ struct APIKeysView: View {
                 Button(action: syncCredits) {
                     HStack(spacing: 4) {
                         Text("Sync")
+                            .foregroundColor(settingsService.internetAccessEnabled ? .primary : .secondary)
                         if isSyncing {
                             ProgressView()
                                 .scaleEffect(0.8)
                         } else {
                             Image(systemName: "arrow.clockwise")
+                                .foregroundColor(settingsService.internetAccessEnabled ? .primary : .secondary)
                         }
                     }
                 }
-                .disabled(isSyncing)
+                .disabled(isSyncing || !settingsService.internetAccessEnabled)
             }
         }
         .alert("Set OpenAI API Key", isPresented: $showingAPIKeyAlert) {
@@ -322,7 +339,8 @@ struct APIKeysView: View {
                 onCompleted: onOpenAISyncComplete,
                 onError: { error in
                     print("❌ OpenAI credit sync error: \(error)")
-                }
+                },
+                onCancelled: cancelSync
             )
         }
         .sheet(isPresented: $showingPerplexityCreditSync) {
@@ -338,7 +356,8 @@ struct APIKeysView: View {
                 onCompleted: onPerplexitySyncComplete,
                 onError: { error in
                     print("❌ Perplexity credit sync error: \(error)")
-                }
+                },
+                onCancelled: cancelSync
             )
         }
     }
@@ -346,6 +365,7 @@ struct APIKeysView: View {
     private func syncCredits() {
         print("🔄 Starting credit sync process")
         isSyncing = true
+        syncCancelled = false
         
         // Start with OpenAI first
         if !settingsService.openAIAPIKey.isEmpty {
@@ -363,11 +383,21 @@ struct APIKeysView: View {
     
     private func onOpenAISyncComplete() {
         print("✅ OpenAI sync completed")
+        
+        // Check if sync was cancelled
+        if syncCancelled {
+            print("🚫 Sync cancelled by user")
+            isSyncing = false
+            return
+        }
+        
         // After OpenAI sync completes, try Perplexity
         if !settingsService.perplexityAPIKey.isEmpty {
             print("🔑 Starting Perplexity sync after OpenAI")
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                showingPerplexityCreditSync = true
+                if !self.syncCancelled {
+                    showingPerplexityCreditSync = true
+                }
             }
         } else {
             print("✅ All syncs completed")
@@ -379,6 +409,16 @@ struct APIKeysView: View {
         print("✅ Perplexity sync completed")
         print("✅ All syncs completed")
         isSyncing = false
+    }
+    
+    private func cancelSync() {
+        print("🚫 Cancelling sync process")
+        syncCancelled = true
+        isSyncing = false
+        
+        // Close any open sync sheets
+        showingOpenAICreditSync = false
+        showingPerplexityCreditSync = false
     }
     
     private func formatTimeWithTimezone(_ date: Date) -> String {

@@ -234,6 +234,7 @@ struct CreditSyncWebView: View {
     let onCreditsFound: (Double) -> Void
     let onCompleted: (() -> Void)?
     let onError: ((String) -> Void)?
+    let onCancelled: (() -> Void)?
     
     @State private var isAuthenticated = false
     @State private var authenticationError: String?
@@ -353,6 +354,7 @@ struct CreditSyncWebView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Cancel") {
                         isPresented = false
+                        onCancelled?()
                     }
                 }
             }
@@ -405,7 +407,7 @@ struct CreditSyncWebView: View {
                         // Close after failed authentication
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                             self.isPresented = false
-                            self.onCompleted?()
+                            self.onCancelled?()
                         }
                     }
                 }
@@ -414,7 +416,7 @@ struct CreditSyncWebView: View {
             authenticationError = "Device authentication not available"
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 self.isPresented = false
-                self.onCompleted?()
+                self.onCancelled?()
             }
         }
     }
@@ -459,9 +461,18 @@ struct CreditExtractorWebView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate {
         let parent: CreditExtractorWebView
         private var extractionTimer: Timer?
+        private var retryTimer: Timer?
+        private var startTime: Date?
+        private var retryCount = 0
+        private let maxRetryDuration: TimeInterval = 15.0
+        private let retryInterval: TimeInterval = 2.0
         
         init(_ parent: CreditExtractorWebView) {
             self.parent = parent
+        }
+        
+        deinit {
+            cleanupTimers()
         }
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -470,21 +481,68 @@ struct CreditExtractorWebView: UIViewRepresentable {
                 self.parent.isLoading = false
             }
             
-            // Wait a moment for the page to fully load, then extract credits
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                // Notify that sync is starting
-                self.parent.onSyncStarted()
-                self.extractCredits(from: webView)
+            // Start the credit extraction process with retry mechanism
+            startTime = Date()
+            retryCount = 0
+            
+            // Notify that sync is starting
+            parent.onSyncStarted()
+            
+            // Wait a moment for the page to fully load, then start extraction with retries
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.startCreditExtractionWithRetries(from: webView)
             }
         }
         
-        private func extractCredits(from webView: WKWebView) {
-            guard !parent.hasAttemptedSync else { 
-                print("❌ Credit extraction already attempted")
-                return 
+        private func startCreditExtractionWithRetries(from webView: WKWebView) {
+            print("🔍 Starting credit extraction attempt #\(retryCount + 1) for \(parent.provider)")
+            extractCreditsWithCallback(from: webView) { [weak self] success in
+                guard let self = self else { return }
+                
+                if success {
+                    print("✅ Credit extraction successful on attempt #\(self.retryCount + 1)")
+                    self.cleanupTimers()
+                    return
+                }
+                
+                // Check if we've exceeded the maximum retry duration
+                let elapsed = Date().timeIntervalSince(self.startTime ?? Date())
+                if elapsed >= self.maxRetryDuration {
+                    print("⏰ Credit extraction timeout after \(elapsed) seconds, proceeding anyway")
+                    self.handleExtractionTimeout(webView: webView)
+                    return
+                }
+                
+                // Schedule next retry
+                self.retryCount += 1
+                print("⏳ Retrying credit extraction in \(self.retryInterval) seconds (attempt #\(self.retryCount + 1))")
+                
+                self.retryTimer = Timer.scheduledTimer(withTimeInterval: self.retryInterval, repeats: false) { _ in
+                    self.startCreditExtractionWithRetries(from: webView)
+                }
             }
-            parent.hasAttemptedSync = true
-            print("🔍 Starting credit extraction for \(parent.provider)")
+        }
+        
+        private func handleExtractionTimeout(webView: WKWebView) {
+            print("⚠️ Credit extraction timed out after 15 seconds for \(parent.provider)")
+            cleanupTimers()
+            
+            // Close the webview and proceed to next step
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                self.parent.isPresented = false
+                self.parent.onCompleted?()
+            }
+        }
+        
+        private func cleanupTimers() {
+            extractionTimer?.invalidate()
+            extractionTimer = nil
+            retryTimer?.invalidate()
+            retryTimer = nil
+        }
+        
+        private func extractCreditsWithCallback(from webView: WKWebView, completion: @escaping (Bool) -> Void) {
+            print("🔍 Attempting credit extraction for \(parent.provider)")
             
             let script: String
             
@@ -541,31 +599,91 @@ struct CreditExtractorWebView: UIViewRepresentable {
                 script = """
                 // Look for credit information on Perplexity billing page
                 function findCredits() {
-                    const selectors = [
-                        '[class*="balance"]',
-                        '[class*="credit"]',
-                        '[class*="billing"]',
-                        'div[class*="balance"]',
-                        'span[class*="balance"]',
-                        'div[class*="credit"]',
-                        'span[class*="credit"]',
-                        '[data-testid*="credit"]',
-                        '[data-testid*="balance"]'
-                    ];
+                    console.log('Starting Perplexity credit extraction');
                     
-                    for (let selector of selectors) {
-                        const elements = document.querySelectorAll(selector);
-                        for (let element of elements) {
-                            const text = element.textContent || element.innerText;
-                            if (text) {
-                                const match = text.match(/\\$([0-9]+\\.?[0-9]*)/);
-                                if (match) {
-                                    return parseFloat(match[1]);
+                    // First, try to find "Credit Balance" text and look for the value below it
+                    const allElements = document.querySelectorAll('*');
+                    
+                    for (let element of allElements) {
+                        const text = element.textContent || element.innerText || '';
+                        
+                        // Look for "Credit Balance" text (case insensitive)
+                        if (text.toLowerCase().includes('credit balance')) {
+                            console.log('Found Credit Balance element:', text);
+                            
+                            // Look in the same element for a dollar amount
+                            const sameElementMatch = text.match(/\\$([0-9,]+\\.?[0-9]*)/);
+                            if (sameElementMatch) {
+                                const amount = parseFloat(sameElementMatch[1].replace(',', ''));
+                                console.log('Found credit in same element:', amount);
+                                return amount;
+                            }
+                            
+                            // Look in next sibling elements for the credit amount
+                            let nextElement = element.nextElementSibling;
+                            let attempts = 0;
+                            while (nextElement && attempts < 5) {
+                                const nextText = nextElement.textContent || nextElement.innerText || '';
+                                const nextMatch = nextText.match(/\\$([0-9,]+\\.?[0-9]*)/);
+                                if (nextMatch) {
+                                    const amount = parseFloat(nextMatch[1].replace(',', ''));
+                                    console.log('Found credit in next sibling:', amount);
+                                    return amount;
+                                }
+                                nextElement = nextElement.nextElementSibling;
+                                attempts++;
+                            }
+                            
+                            // Look in child elements for the credit amount
+                            const childElements = element.querySelectorAll('*');
+                            for (let child of childElements) {
+                                const childText = child.textContent || child.innerText || '';
+                                const childMatch = childText.match(/\\$([0-9,]+\\.?[0-9]*)/);
+                                if (childMatch) {
+                                    const amount = parseFloat(childMatch[1].replace(',', ''));
+                                    console.log('Found credit in child element:', amount);
+                                    return amount;
+                                }
+                            }
+                            
+                            // Look in parent element for the credit amount
+                            if (element.parentElement) {
+                                const parentText = element.parentElement.textContent || element.parentElement.innerText || '';
+                                const parentMatch = parentText.match(/\\$([0-9,]+\\.?[0-9]*)/);
+                                if (parentMatch) {
+                                    const amount = parseFloat(parentMatch[1].replace(',', ''));
+                                    console.log('Found credit in parent element:', amount);
+                                    return amount;
                                 }
                             }
                         }
                     }
                     
+                    // Fallback: look for any dollar amount with credit/balance context
+                    console.log('Trying fallback credit extraction');
+                    const pageText = document.body.innerText || document.body.textContent || '';
+                    
+                    // Look for patterns like "Credit Balance $X.XX" or "$X.XX Credit"
+                    const patterns = [
+                        /credit\\s+balance[^\\$]*\\$([0-9,]+\\.?[0-9]*)/gi,
+                        /balance[^\\$]*\\$([0-9,]+\\.?[0-9]*)/gi,
+                        /\\$([0-9,]+\\.?[0-9]*)\\s*credit/gi,
+                        /\\$([0-9,]+\\.?[0-9]*)\\s*balance/gi,
+                        /\\$([0-9,]+\\.?[0-9]*)\\s*available/gi
+                    ];
+                    
+                    for (let pattern of patterns) {
+                        const match = pageText.match(pattern);
+                        if (match && match[1]) {
+                            const amount = parseFloat(match[1].replace(',', ''));
+                            if (!isNaN(amount)) {
+                                console.log('Found credit via pattern:', amount);
+                                return amount;
+                            }
+                        }
+                    }
+                    
+                    console.log('No credit balance found');
                     return null;
                 }
                 
@@ -577,162 +695,41 @@ struct CreditExtractorWebView: UIViewRepresentable {
                 DispatchQueue.main.async {
                     if let error = error {
                         print("❌ JavaScript execution error: \(error)")
-                        // Try alternative extraction immediately on selector errors
-                        self.tryAlternativeExtraction(from: webView)
+                        completion(false)
                         return
                     }
                     
                     if let credits = result as? Double, credits > 0 {
                         print("✅ Successfully extracted credits: $\(credits)")
+                        self.parent.hasAttemptedSync = true
                         self.parent.onCreditsFound(credits)
+                        
+                        // Close the webview after successful extraction
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            self.parent.isPresented = false
+                            self.parent.onCompleted?()
+                        }
+                        completion(true)
                     } else if let credits = result as? NSNumber {
                         let creditsDouble = credits.doubleValue
                         if creditsDouble > 0 {
                             print("✅ Successfully extracted credits (NSNumber): $\(creditsDouble)")
+                            self.parent.hasAttemptedSync = true
                             self.parent.onCreditsFound(creditsDouble)
+                            
+                            // Close the webview after successful extraction
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                self.parent.isPresented = false
+                                self.parent.onCompleted?()
+                            }
+                            completion(true)
                         } else {
                             print("⚠️ No valid credits found. Result: \(String(describing: result))")
-                            self.tryAlternativeExtraction(from: webView)
+                            completion(false)
                         }
                     } else {
                         print("⚠️ No credits found. Result: \(String(describing: result))")
-                        // Try a more aggressive extraction approach
-                        self.tryAlternativeExtraction(from: webView)
-                    }
-                    
-                    // Close the webview after attempting extraction
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        self.parent.isPresented = false
-                        self.parent.onCompleted?()
-                    }
-                }
-            }
-        }
-        
-        private func tryAlternativeExtraction(from webView: WKWebView) {
-            print("🔄 Trying alternative extraction method")
-            
-            let alternativeScript: String
-            
-            if parent.provider == "OpenAI" {
-                alternativeScript = """
-                // More comprehensive OpenAI credit extraction
-                function findCreditsAlternative() {
-                    console.log('Starting alternative credit extraction for OpenAI');
-                    
-                    // First, try to find the page content
-                    let pageText = document.body.innerText || document.body.textContent || '';
-                    console.log('Page text sample:', pageText.substring(0, 500));
-                    
-                    // Look for dollar amounts in the page text
-                    let dollarMatches = pageText.match(/\\$([0-9,]+\\.?[0-9]*)/g);
-                    console.log('Found dollar amounts:', dollarMatches);
-                    
-                    if (dollarMatches && dollarMatches.length > 0) {
-                        // Try to find the largest amount (likely to be credits)
-                        let amounts = dollarMatches.map(match => {
-                            let num = parseFloat(match.replace('$', '').replace(',', ''));
-                            return isNaN(num) ? 0 : num;
-                        }).filter(num => num > 0);
-                        
-                        console.log('Parsed amounts:', amounts);
-                        
-                        if (amounts.length > 0) {
-                            // Return the largest amount found, but ensure it's a reasonable credit amount
-                            let maxAmount = Math.max(...amounts);
-                            // Only return amounts that seem reasonable for API credits (between $0.01 and $10000)
-                            return (maxAmount >= 0.01 && maxAmount <= 10000) ? maxAmount : null;
-                        }
-                    }
-                    
-                    // Try specific text patterns
-                    let patterns = [
-                        /credit balance.*?\\$([0-9,]+\\.?[0-9]*)/i,
-                        /available.*?\\$([0-9,]+\\.?[0-9]*)/i,
-                        /balance.*?\\$([0-9,]+\\.?[0-9]*)/i,
-                        /\\$([0-9,]+\\.?[0-9]*)/g
-                    ];
-                    
-                    for (let pattern of patterns) {
-                        let match = pageText.match(pattern);
-                        if (match && match[1]) {
-                            let amount = parseFloat(match[1].replace(',', ''));
-                            if (!isNaN(amount) && amount > 0) {
-                                console.log('Found credit via pattern:', amount);
-                                return amount;
-                            }
-                        }
-                    }
-                    
-                    return null;
-                }
-                
-                findCreditsAlternative();
-                """
-            } else {
-                alternativeScript = """
-                // More comprehensive Perplexity credit extraction
-                function findCreditsAlternative() {
-                    console.log('Starting alternative credit extraction for Perplexity');
-                    
-                    let pageText = document.body.innerText || document.body.textContent || '';
-                    console.log('Page text sample:', pageText.substring(0, 500));
-                    
-                    // Look for dollar amounts
-                    let dollarMatches = pageText.match(/\\$([0-9,]+\\.?[0-9]*)/g);
-                    console.log('Found dollar amounts:', dollarMatches);
-                    
-                    if (dollarMatches && dollarMatches.length > 0) {
-                        let amounts = dollarMatches.map(match => {
-                            let num = parseFloat(match.replace('$', '').replace(',', ''));
-                            return isNaN(num) ? 0 : num;
-                        }).filter(num => num > 0);
-                        
-                        console.log('Parsed amounts:', amounts);
-                        
-                        if (amounts.length > 0) {
-                            // Return the largest reasonable amount found
-                            let maxAmount = Math.max(...amounts);
-                            return (maxAmount >= 0.01 && maxAmount <= 10000) ? maxAmount : null;
-                        }
-                    }
-                    
-                    return null;
-                }
-                
-                findCreditsAlternative();
-                """
-            }
-            
-            webView.evaluateJavaScript(alternativeScript) { result, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        print("❌ Alternative extraction error: \(error)")
-                        let errorMessage = "Failed to extract \(self.parent.provider) credits: \(error.localizedDescription)"
-                        self.parent.onError?(errorMessage)
-                        return
-                    }
-                    
-                    if let credits = result as? Double, credits > 0 {
-                        print("✅ Alternative extraction successful: $\(credits)")
-                        self.parent.onCreditsFound(credits)
-                    } else if let credits = result as? NSNumber {
-                        let creditsDouble = credits.doubleValue
-                        if creditsDouble > 0 {
-                            print("✅ Alternative extraction successful (NSNumber): $\(creditsDouble)")
-                            self.parent.onCreditsFound(creditsDouble)
-                        } else {
-                            print("❌ Alternative extraction failed - invalid amount: \(creditsDouble)")
-                            let errorMessage = "Unable to extract valid \(self.parent.provider) credits from the billing page."
-                            self.parent.onError?(errorMessage)
-                        }
-                    } else {
-                        print("❌ Alternative extraction failed. Final result: \(String(describing: result))")
-                        print("⚠️ Credit extraction failed - no valid credits found")
-                        
-                        // Call error callback with descriptive message
-                        let errorMessage = "Unable to extract \(self.parent.provider) credits from the billing page. This may happen if the page structure has changed or if you're not logged in."
-                        self.parent.onError?(errorMessage)
+                        completion(false)
                     }
                 }
             }

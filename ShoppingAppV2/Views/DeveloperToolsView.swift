@@ -8,18 +8,8 @@ struct DeveloperToolsView: View {
     @ObservedObject var historyService: HistoryService
     
     @State private var isTestingTaxAccuracy = false
-    @State private var testResults: TaxAccuracyResults?
     @State private var showingTestResults = false
     @State private var currentTestProgress = 0
-    
-    struct TaxAccuracyResults {
-        let totalTests: Int
-        let responses: [String]
-        let mostCommonAnswer: String
-        let mostCommonCount: Int
-        let accuracyPercentage: Double
-        let prompt: String
-    }
     
     var body: some View {
         List {
@@ -62,7 +52,7 @@ struct DeveloperToolsView: View {
                 }
             }
             
-            if let results = testResults {
+            if let results = settingsService.savedTestResults {
                 Section("Latest Test Results") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -98,6 +88,14 @@ struct DeveloperToolsView: View {
                                 .fontWeight(.semibold)
                         }
                         
+                        HStack {
+                            Text("Test Date:")
+                                .fontWeight(.medium)
+                            Spacer()
+                            Text(results.testDate, style: .date)
+                                .foregroundColor(.secondary)
+                        }
+                        
                         Button("View All Responses & Prompt") {
                             showingTestResults = true
                         }
@@ -111,7 +109,7 @@ struct DeveloperToolsView: View {
         .navigationTitle("Developer Tools")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingTestResults) {
-            if let results = testResults {
+            if let results = settingsService.savedTestResults {
                 TaxAccuracyResultsView(results: results)
             }
         }
@@ -119,7 +117,7 @@ struct DeveloperToolsView: View {
     
     private func testTaxAccuracy() {
         isTestingTaxAccuracy = true
-        testResults = nil
+        settingsService.savedTestResults = nil
         currentTestProgress = 0
         
         Task {
@@ -188,7 +186,7 @@ struct DeveloperToolsView: View {
             )
             
             DispatchQueue.main.async {
-                self.testResults = results
+                self.settingsService.savedTestResults = results
                 self.isTestingTaxAccuracy = false
                 self.currentTestProgress = 0
             }
@@ -197,7 +195,7 @@ struct DeveloperToolsView: View {
 }
 
 struct TaxAccuracyResultsView: View {
-    let results: DeveloperToolsView.TaxAccuracyResults
+    let results: TaxAccuracyResults
     @Environment(\.presentationMode) var presentationMode
     
     var body: some View {

@@ -182,3 +182,25 @@ The app includes unit tests in `ShoppingAppV2Tests/` and UI tests in `ShoppingAp
 - Retry logic with exponential backoff for critical operations
 - User-friendly error messages with actionable guidance
 - Fallback mechanisms (e.g., manual tax entry when detection fails)
+
+## Known Issues
+
+### Critical Bugs
+- **Custom Price List Item Selection**: When tapping an item on a custom made list, it pops the list and brings it down over and over. This issue has been attempted to be fixed multiple times and requires verbose debugging to resolve.
+
+## Important Development Notes
+
+### Simulator Requirements
+- **ALWAYS use iPhone 16 simulator** when testing or building the app. This is a hard requirement specified in the project documentation.
+
+### Dependency Injection Pattern
+The app uses a centralized dependency injection pattern through `MainTabView`:
+- All major services (`ShoppingListStore`, `LocationManager`, `OpenAIService`, etc.) are instantiated in `MainTabView`
+- Services are passed down to child views through initializers
+- `AIService` is created as a computed property that combines multiple dependencies
+
+### Token Usage and Cost Estimation
+- The app includes sophisticated token estimation logic with ~20% safety margin
+- Supports multiple cost tracking decimal places for precision
+- All AI interactions are tracked through `BillingService` and `HistoryService`
+- Token usage is estimated client-side and validated against actual API responses

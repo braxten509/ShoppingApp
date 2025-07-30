@@ -9,7 +9,7 @@ class OpenAIService: ObservableObject {
             UserDefaults.standard.set(apiKey, forKey: apiKeyStorageKey)
         }
     }
-    @Published var perplexityApiKey: String = "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" {
+    @Published var perplexityApiKey: String = "" {
         didSet {
             UserDefaults.standard.set(perplexityApiKey, forKey: perplexityApiKeyStorageKey)
         }
